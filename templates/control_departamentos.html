@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Control por departamentos - Inventario{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0">Control anual por departamentos y docentes</h4>
+  <form method="get" class="d-flex gap-2">
+    <input type="number" name="anio" class="form-control" min="2000" value="{{ anio }}" />
+    <button type="submit" class="btn btn-outline-primary">Ver año</button>
+  </form>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <h6 class="card-title">Configurar cupo anual por artículo</h6>
+    <form method="post" class="row g-3">
+      <div class="col-md-2">
+        <label class="form-label">Año</label>
+        <input type="number" name="anio" class="form-control" min="2000" value="{{ anio }}" required />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Departamento o edificio</label>
+        <select name="area" class="form-select" required>
+          <option value="">-- Selecciona --</option>
+          {% for area in departamentos %}
+          <option value="{{ area }}">{{ area }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Artículo</label>
+        <select name="articulo_id" class="form-select" required>
+          <option value="">-- Selecciona --</option>
+          {% for a in articulos %}
+          <option value="{{ a.id }}">{{ a.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Cupo anual</label>
+        <input type="number" name="cantidad_maxima" class="form-control" min="0" required />
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary">Guardar cupo</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<h5 class="mb-2">Cupos del año {{ anio }}</h5>
+<div class="table-responsive mb-4">
+  <table class="table table-striped table-sm align-middle">
+    <thead>
+      <tr>
+        <th>Departamento</th>
+        <th>Artículo</th>
+        <th>Cupo anual</th>
+        <th>Consumido</th>
+        <th>Disponible</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in cupos_resumen %}
+      <tr>
+        <td>{{ c.area }}</td>
+        <td>{{ c.articulo }}</td>
+        <td>{{ c.maximo }}</td>
+        <td>{{ c.consumido }}</td>
+        <td class="{% if c.disponible <= 0 %}text-danger fw-bold{% else %}text-success{% endif %}">
+          {{ c.disponible }}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="5" class="text-center text-muted">No hay cupos configurados para este año.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h5 class="mb-2">Entradas y salidas por departamento ({{ anio }})</h5>
+<div class="table-responsive mb-4">
+  <table class="table table-striped table-sm align-middle">
+    <thead>
+      <tr>
+        <th>Departamento</th>
+        <th>Entradas</th>
+        <th>Salidas</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in resumen_departamentos %}
+      <tr>
+        <td>{{ r.area }}</td>
+        <td>{{ r.entradas }}</td>
+        <td>{{ r.salidas }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="3" class="text-center text-muted">Sin movimientos por departamento en este año.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h5 class="mb-2">Entradas y salidas por docente ({{ anio }})</h5>
+<div class="table-responsive">
+  <table class="table table-striped table-sm align-middle">
+    <thead>
+      <tr>
+        <th>Docente</th>
+        <th>Departamento</th>
+        <th>Entradas</th>
+        <th>Salidas</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in resumen_docentes %}
+      <tr>
+        <td>{{ r.docente }}</td>
+        <td>{{ r.area or "-" }}</td>
+        <td>{{ r.entradas }}</td>
+        <td>{{ r.salidas }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="4" class="text-center text-muted">Sin movimientos por docente en este año.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

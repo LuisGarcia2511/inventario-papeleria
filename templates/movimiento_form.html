@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}
+  {% if movimiento %}Editar movimiento{% else %}Nuevo movimiento{% endif %} - Inventario
+{% endblock %}
+
+{% block content %}
+<h4 class="mb-3">
+  {% if movimiento %}Editar movimiento{% else %}Registrar movimiento{% endif %}
+</h4>
+
+<form method="post" class="row g-3">
+  <div class="col-md-3">
+    <label class="form-label">Tipo de movimiento *</label>
+    <select name="tipo" class="form-select" required>
+      <option value="ENTRADA" {% if movimiento and movimiento.tipo == 'ENTRADA' %}selected{% endif %}>
+        ENTRADA (entra al inventario)
+      </option>
+      <option value="SALIDA" {% if movimiento and movimiento.tipo == 'SALIDA' %}selected{% endif %}>
+        SALIDA (se entrega al maestro)
+      </option>
+    </select>
+  </div>
+
+  <div class="col-md-5">
+    <label class="form-label">Artículo *</label>
+    <select name="articulo_id" class="form-select" required id="articuloSelect">
+      <option value="">-- Selecciona manualmente --</option>
+      {% for a in articulos %}
+      <option
+        value="{{ a.id }}"
+        data-cb="{{ a.codigo_barras or '' }}"
+        data-ci="{{ a.codigo_interno or '' }}"
+        {% if movimiento and movimiento.articulo_id == a.id %}selected{% endif %}
+      >
+        {{ a.nombre }}{% if a.codigo_barras %} ({{ a.codigo_barras }}){% endif %}
+      </option>
+      {% endfor %}
+    </select>
+    <div class="form-text">
+      Puedes seleccionar el artículo a mano o escanearlo en el campo de abajo.
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <label class="form-label">Maestro (solo para salidas)</label>
+    <select name="maestro_id" class="form-select">
+      <option value="">-- Ninguno / No aplica --</option>
+      {% for m in maestros %}
+      <option value="{{ m.id }}" {% if movimiento and movimiento.maestro_id == m.id %}selected{% endif %}>
+        {{ m.nombre }}{% if m.area %} — {{ m.area }}{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-md-3">
+    <label class="form-label">Cantidad *</label>
+    <input
+      type="number"
+      name="cantidad"
+      class="form-control"
+      min="1"
+      required
+      value="{{ movimiento.cantidad if movimiento else '' }}"
+    />
+  </div>
+
+  <div class="col-md-4">
+    <label class="form-label">Escanear código de barras</label>
+    <input
+      type="text"
+      name="codigo_barras"
+      class="form-control"
+      placeholder="Coloca el cursor aquí y escanea"
+    />
+    <div class="form-text">
+      El sistema buscará primero por código de barras, luego por código interno.
+    </div>
+  </div>
+
+  <div class="col-md-8">
+    <label class="form-label">Comentario (opcional)</label>
+    <input
+      type="text"
+      name="comentario"
+      class="form-control"
+      placeholder="Por ejemplo: Grupo, materia, motivo, etc."
+      value="{{ movimiento.comentario if movimiento else '' }}"
+    />
+  </div>
+
+  <div class="col-md-4">
+    <label class="form-label">Quién vino por el artículo</label>
+    <input
+      type="text"
+      name="persona_recibe"
+      class="form-control"
+      placeholder="Nombre de quien recoge"
+      value="{{ movimiento.persona_recibe if movimiento else '' }}"
+    />
+    <div class="form-text">En SALIDA este dato es obligatorio.</div>
+  </div>
+
+  <div class="col-12">
+    <button type="submit" class="btn btn-primary">
+      {% if movimiento %}Guardar cambios{% else %}Guardar movimiento{% endif %}
+    </button>
+    <a href="{{ url_for('index') }}" class="btn btn-secondary">Cancelar</a>
+  </div>
+</form>
+<script>
+  (function () {
+    const input = document.querySelector('input[name="codigo_barras"]');
+    const select = document.getElementById("articuloSelect");
+    if (!input || !select) return;
+
+    function normalizar(valor) {
+      return (valor || "").trim().toUpperCase();
+    }
+
+    function intentarSeleccionar() {
+      const valor = normalizar(input.value);
+      if (!valor) return;
+
+      let match = null;
+      for (const opt of select.options) {
+        if (!opt.value) continue;
+        const cb = normalizar(opt.getAttribute("data-cb"));
+        const ci = normalizar(opt.getAttribute("data-ci"));
+        const texto = normalizar(opt.textContent || "");
+
+        if (valor === cb || valor === ci || texto.includes(valor)) {
+          match = opt;
+          break;
+        }
+      }
+
+      if (match) {
+        select.value = match.value;
+      }
+    }
+
+    input.addEventListener("change", intentarSeleccionar);
+    input.addEventListener("input", (e) => {
+      // Cuando el lector termina (suele mandar Enter), disparamos la búsqueda
+      if (e.inputType === "insertLineBreak") {
+        intentarSeleccionar();
+      }
+    });
+
+    // Por si el lector solo teclea rápido + Enter
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        intentarSeleccionar();
+      }
+    });
+  })();
+</script>
+{% endblock %}
+

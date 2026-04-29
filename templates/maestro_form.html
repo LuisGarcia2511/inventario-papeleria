@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% if maestro %}
+  {% set page_title = "Editar maestro" %}
+{% else %}
+  {% set page_title = "Nuevo maestro" %}
+{% endif %}
+
+{% block title %}{{ page_title }} - Inventario{% endblock %}
+
+{% block content %}
+<h4 class="mb-3">{{ page_title }}</h4>
+
+<form method="post" class="row g-3">
+  <div class="col-md-6">
+    <label class="form-label">Nombre *</label>
+    <input
+      type="text"
+      name="nombre"
+      value="{{ maestro.nombre if maestro else '' }}"
+      class="form-control"
+      required
+      autofocus
+    />
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Clave (opcional)</label>
+    <input
+      type="text"
+      name="clave"
+      value="{{ maestro.clave if maestro else '' }}"
+      class="form-control"
+    />
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Departamento / edificio</label>
+    <select name="area" class="form-select">
+      <option value="">-- Sin departamento --</option>
+      {% for area in departamentos %}
+      <option value="{{ area }}" {% if maestro and maestro.area == area %}selected{% endif %}>
+        {{ area }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-12">
+    <button type="submit" class="btn btn-primary">Guardar</button>
+    <a href="{{ url_for('listar_maestros') }}" class="btn btn-secondary">Cancelar</a>
+  </div>
+</form>
+{% endblock %}
+

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Artículos - Inventario{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4>Artículos</h4>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('nuevo_articulo') }}" class="btn btn-primary btn-sm">Nuevo artículo</a>
+    <a href="{{ url_for('importar_articulos_excel') }}" class="btn btn-outline-primary btn-sm">
+      Importar artículos (Excel)
+    </a>
+    <a href="{{ url_for('export_inventario') }}" class="btn btn-outline-secondary btn-sm">
+      Exportar inventario (Excel)
+    </a>
+  </div>
+</div>
+
+<form method="get" class="row g-2 mb-3">
+  <div class="col-md-4">
+    <input
+      type="text"
+      name="q"
+      value="{{ q }}"
+      class="form-control"
+      placeholder="Buscar por nombre o código / escanear código de barras"
+      autofocus
+    />
+  </div>
+  <div class="col-md-2">
+    <button type="submit" class="btn btn-outline-secondary w-100">Buscar</button>
+  </div>
+</form>
+
+<div class="table-responsive">
+  <table class="table table-striped table-sm align-middle">
+    <thead>
+      <tr>
+        <th>Nombre</th>
+        <th>Código interno</th>
+        <th>Código de barras</th>
+        <th>Unidad</th>
+        <th>Categoría</th>
+        <th>Marca</th>
+        <th>Stock actual</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in articulos %}
+      <tr>
+        <td>{{ a.nombre }}</td>
+        <td>{{ a.codigo_interno or "-" }}</td>
+        <td>{{ a.codigo_barras or "-" }}</td>
+        <td>{{ a.unidad or "-" }}</td>
+        <td>{{ a.categoria or "-" }}</td>
+        <td>{{ a.marca or "-" }}</td>
+        <td>{{ a.stock_actual }}</td>
+        <td>
+          <a
+            href="{{ url_for('editar_articulo', articulo_id=a.id) }}"
+            class="btn btn-sm btn-outline-primary"
+            >Editar</a
+          >
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="8" class="text-center text-muted">
+          No hay artículos registrados todavía.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% if articulo %}
+  {% set page_title = "Editar artículo" %}
+{% else %}
+  {% set page_title = "Nuevo artículo" %}
+{% endif %}
+
+{% block title %}{{ page_title }} - Inventario{% endblock %}
+
+{% block content %}
+<h4 class="mb-3">{{ page_title }}</h4>
+
+<form method="post" class="row g-3">
+  <div class="col-md-6">
+    <label class="form-label">Nombre *</label>
+    <input
+      type="text"
+      name="nombre"
+      value="{{ articulo.nombre if articulo else '' }}"
+      class="form-control"
+      required
+      autofocus
+    />
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Código interno</label>
+    <input
+      type="text"
+      name="codigo_interno"
+      value="{{ articulo.codigo_interno if articulo else '' }}"
+      class="form-control"
+    />
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Código de barras</label>
+    <input
+      type="text"
+      name="codigo_barras"
+      value="{{ articulo.codigo_barras if articulo else '' }}"
+      class="form-control"
+      placeholder="Puedes escanear aquí"
+    />
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Unidad (pza, caja, etc.)</label>
+    <input
+      type="text"
+      name="unidad"
+      value="{{ articulo.unidad if articulo else '' }}"
+      class="form-control"
+    />
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Categoría</label>
+    <input
+      type="text"
+      name="categoria"
+      value="{{ articulo.categoria if articulo else '' }}"
+      class="form-control"
+    />
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Marca</label>
+    <input
+      type="text"
+      name="marca"
+      value="{{ articulo.marca if articulo else '' }}"
+      class="form-control"
+    />
+  </div>
+  <div class="col-12">
+    <button type="submit" class="btn btn-primary">Guardar</button>
+    <a href="{{ url_for('listar_articulos') }}" class="btn btn-secondary">Cancelar</a>
+  </div>
+</form>
+{% endblock %}
+
