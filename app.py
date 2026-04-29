@@ -9,7 +9,8 @@ import pandas as pd
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "change-this-secret-key"
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///inventario.db"
+import os
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
@@ -977,7 +978,8 @@ def control_departamentos():
         resumen_departamentos=resumen_departamentos,
         resumen_docentes=resumen_docentes,
     )
-
+with app.app_context():
+    db.create_all()
 
 if __name__ == "__main__":
     with app.app_context():
