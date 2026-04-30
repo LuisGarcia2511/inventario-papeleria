@@ -66,6 +66,18 @@
     />
   </div>
 
+  <div class="col-md-3">
+    <label class="form-label">Fecha de movimiento *</label>
+    <input
+      type="datetime-local"
+      name="fecha"
+      class="form-control"
+      required
+      value="{% if movimiento and movimiento.fecha %}{{ movimiento.fecha.strftime('%Y-%m-%dT%H:%M') }}{% else %}{{ fecha_default }}{% endif %}"
+    />
+    <div class="form-text">Usa la fecha/hora de la factura o entrega real.</div>
+  </div>
+
   <div class="col-md-4">
     <label class="form-label">Escanear código de barras</label>
     <input

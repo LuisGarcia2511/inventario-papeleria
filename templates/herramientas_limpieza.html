@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}Herramienta y limpieza - Inventario{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0">Herramienta y artículos de limpieza</h4>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h6 class="card-title">Alta de herramienta / limpieza</h6>
+        <form method="post" action="{{ url_for('nueva_herramienta_limpieza') }}" class="row g-3">
+          <div class="col-12">
+            <label class="form-label">Nombre *</label>
+            <input type="text" name="nombre" class="form-control" required />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Tipo *</label>
+            <select name="tipo" class="form-select" required id="tipoElementoSelect">
+              <option value="HERRAMIENTA">HERRAMIENTA</option>
+              <option value="LIMPIEZA">LIMPIEZA</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" id="labelResponsableAlta">Responsable *</label>
+            <input type="text" name="responsable" class="form-control" id="responsableAltaInput" required />
+            <div class="form-text" id="ayudaResponsableAlta"></div>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Observaciones</label>
+            <input type="text" name="observaciones" class="form-control" />
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-primary">Guardar elemento</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h6 class="card-title">Registrar salida</h6>
+        <form method="post" action="{{ url_for('registrar_salida_herramienta') }}" class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Herramienta / artículo *</label>
+            <select name="herramienta_id" class="form-select" required id="herramientaSelect">
+              <option value="">-- Selecciona --</option>
+              {% for h in herramientas %}
+              <option value="{{ h.id }}" data-responsable="{{ h.responsable }}">
+                [{{ h.tipo }}] {{ h.nombre }} — Responsable: {{ h.responsable }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Responsable que entrega *</label>
+            <input type="text" name="responsable" id="responsableInput" class="form-control" required />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Quién se lo lleva *</label>
+            <input type="text" name="quien_se_lleva" class="form-control" required />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Fecha que se lo llevó *</label>
+            <input
+              type="datetime-local"
+              name="fecha_se_llevo"
+              class="form-control"
+              value="{{ fecha_default }}"
+              required
+            />
+          </div>
+          <div class="col-12">
+            <label class="form-label">Comentario</label>
+            <input type="text" name="comentario" class="form-control" />
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-success">Registrar salida</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-4 shadow-sm">
+  <div class="card-body">
+    <h6 class="card-title">Historial de salidas</h6>
+    <div class="table-responsive">
+      <table class="table table-striped table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Fecha salida</th>
+            <th>Elemento</th>
+            <th>Responsable</th>
+            <th>Se lo llevó</th>
+            <th>Comentario</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in salidas %}
+          <tr>
+            <td>{{ s.fecha_se_llevo.strftime("%d/%m/%Y %H:%M") }}</td>
+            <td>
+              {% if s.herramienta %}
+                [{{ s.herramienta.tipo }}] {{ s.herramienta.nombre }}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td>{{ s.responsable }}</td>
+            <td>{{ s.quien_se_lleva }}</td>
+            <td>{{ s.comentario or "-" }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" class="text-center text-muted">
+              Aún no hay salidas registradas.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const tipoSelect = document.getElementById("tipoElementoSelect");
+    const responsableAltaInput = document.getElementById("responsableAltaInput");
+    const labelResponsableAlta = document.getElementById("labelResponsableAlta");
+    const ayudaResponsableAlta = document.getElementById("ayudaResponsableAlta");
+    const select = document.getElementById("herramientaSelect");
+    const responsableInput = document.getElementById("responsableInput");
+    if (!select || !responsableInput) return;
+
+    function configurarResponsableAlta() {
+      if (!tipoSelect || !responsableAltaInput || !labelResponsableAlta || !ayudaResponsableAlta) return;
+      const tipo = (tipoSelect.value || "").trim().toUpperCase();
+      if (tipo === "LIMPIEZA") {
+        responsableAltaInput.value = "AREA DE RECURSOS MATERIALES";
+        responsableAltaInput.readOnly = true;
+        responsableAltaInput.required = false;
+        labelResponsableAlta.textContent = "Responsable (automático)";
+        ayudaResponsableAlta.textContent = "Para LIMPIEZA se guarda automáticamente AREA DE RECURSOS MATERIALES.";
+      } else {
+        if (responsableAltaInput.value === "AREA DE RECURSOS MATERIALES") {
+          responsableAltaInput.value = "";
+        }
+        responsableAltaInput.readOnly = false;
+        responsableAltaInput.required = true;
+        labelResponsableAlta.textContent = "Responsable *";
+        ayudaResponsableAlta.textContent = "";
+      }
+    }
+
+    function autocompletarResponsable() {
+      const opt = select.options[select.selectedIndex];
+      if (!opt) return;
+      const responsable = (opt.getAttribute("data-responsable") || "").trim();
+      if (responsable) {
+        responsableInput.value = responsable;
+      }
+    }
+
+    select.addEventListener("change", autocompletarResponsable);
+    if (tipoSelect) {
+      tipoSelect.addEventListener("change", configurarResponsableAlta);
+      configurarResponsableAlta();
+    }
+    autocompletarResponsable();
+  })();
+</script>
+{% endblock %}

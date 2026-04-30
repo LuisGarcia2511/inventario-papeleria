@@ -10,7 +10,7 @@ import pandas as pd
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "change-this-secret-key"
 import os
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL") or "sqlite:///inventario.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
@@ -104,6 +104,19 @@ def _to_int(val, default=0) -> int:
         return default
 
 
+def _parse_fecha_form(fecha_str: str):
+    valor = (fecha_str or "").strip()
+    if not valor:
+        return datetime.utcnow()
+    # input type datetime-local llega como "YYYY-MM-DDTHH:MM"
+    for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(valor, fmt)
+        except ValueError:
+            continue
+    return None
+
+
 class Maestro(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(120), nullable=False)
@@ -177,6 +190,35 @@ class CupoDepartamento(db.Model):
         return f"<Cupo {self.area} {self.anio} articulo={self.articulo_id}>"
 
 
+class HerramientaLimpieza(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(150), nullable=False)
+    tipo = db.Column(db.String(30), nullable=False, default="HERRAMIENTA")
+    responsable = db.Column(db.String(120), nullable=False)
+    activo = db.Column(db.Boolean, default=True, nullable=False)
+    observaciones = db.Column(db.String(255), nullable=True)
+
+    salidas = db.relationship("SalidaHerramienta", backref="herramienta", lazy=True)
+
+    def __repr__(self) -> str:
+        return f"<HerramientaLimpieza {self.nombre}>"
+
+
+class SalidaHerramienta(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    herramienta_id = db.Column(
+        db.Integer, db.ForeignKey("herramienta_limpieza.id"), nullable=False
+    )
+    responsable = db.Column(db.String(120), nullable=False)
+    quien_se_lleva = db.Column(db.String(120), nullable=False)
+    fecha_se_llevo = db.Column(db.DateTime, nullable=False)
+    comentario = db.Column(db.String(255), nullable=True)
+    fecha_registro = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<SalidaHerramienta {self.herramienta_id} {self.quien_se_lleva}>"
+
+
 def _apply_movimiento_to_stock(articulo: Articulo, tipo: str, cantidad: int):
     if tipo == "ENTRADA":
         articulo.stock_actual += cantidad
@@ -239,11 +281,18 @@ def _obtener_consumo_departamento(anio: int, area: str, articulo_id: int, exclui
     return int(query.scalar() or 0)
 
 
-def _validar_cupo_departamento(tipo: str, maestro: Maestro, articulo_id: int, cantidad: int, excluir_movimiento_id=None):
+def _validar_cupo_departamento(
+    tipo: str,
+    maestro: Maestro,
+    articulo_id: int,
+    cantidad: int,
+    fecha_movimiento: datetime = None,
+    excluir_movimiento_id=None,
+):
     if tipo != "SALIDA" or not maestro or not maestro.area:
         return True, None
 
-    anio_actual = datetime.utcnow().year
+    anio_actual = (fecha_movimiento or datetime.utcnow()).year
     cupo = CupoDepartamento.query.filter_by(
         anio=anio_actual,
         area=maestro.area,
@@ -630,6 +679,7 @@ def cargar_maestros_base():
 def nuevo_movimiento():
     articulos = Articulo.query.order_by(Articulo.nombre).all()
     maestros = Maestro.query.order_by(Maestro.nombre).all()
+    fecha_default = datetime.utcnow().strftime("%Y-%m-%dT%H:%M")
 
     if request.method == "POST":
         tipo = request.form.get("tipo")
@@ -639,6 +689,12 @@ def nuevo_movimiento():
         cantidad = request.form.get("cantidad")
         comentario = request.form.get("comentario", "").strip() or None
         persona_recibe = request.form.get("persona_recibe", "").strip() or None
+        fecha_str = request.form.get("fecha", "")
+        fecha_movimiento = _parse_fecha_form(fecha_str)
+
+        if fecha_movimiento is None:
+            flash("La fecha no tiene un formato válido.", "danger")
+            return redirect(url_for("nuevo_movimiento"))
 
         try:
             cantidad_int = int(cantidad)
@@ -699,6 +755,7 @@ def nuevo_movimiento():
             maestro=maestro,
             articulo_id=articulo.id,
             cantidad=cantidad_int,
+            fecha_movimiento=fecha_movimiento,
         )
         if not es_valido:
             flash(mensaje, "danger")
@@ -711,6 +768,7 @@ def nuevo_movimiento():
             maestro_id=maestro_id,
             comentario=comentario,
             persona_recibe=persona_recibe,
+            fecha=fecha_movimiento,
         )
         db.session.add(movimiento)
 
@@ -721,7 +779,10 @@ def nuevo_movimiento():
         return redirect(url_for("index"))
 
     return render_template(
-        "movimiento_form.html", articulos=articulos, maestros=maestros
+        "movimiento_form.html",
+        articulos=articulos,
+        maestros=maestros,
+        fecha_default=fecha_default,
     )
 
 
@@ -730,6 +791,7 @@ def editar_movimiento(movimiento_id):
     movimiento = Movimiento.query.get_or_404(movimiento_id)
     articulos = Articulo.query.order_by(Articulo.nombre).all()
     maestros = Maestro.query.order_by(Maestro.nombre).all()
+    fecha_default = datetime.utcnow().strftime("%Y-%m-%dT%H:%M")
 
     if request.method == "POST":
         # Guardar snapshot del "antes" SOLO la primera vez que se edita
@@ -757,6 +819,12 @@ def editar_movimiento(movimiento_id):
         cantidad = request.form.get("cantidad")
         comentario = request.form.get("comentario", "").strip() or None
         persona_recibe = request.form.get("persona_recibe", "").strip() or None
+        fecha_str = request.form.get("fecha", "")
+        fecha_movimiento = _parse_fecha_form(fecha_str)
+
+        if fecha_movimiento is None:
+            flash("La fecha no tiene un formato válido.", "danger")
+            return redirect(url_for("editar_movimiento", movimiento_id=movimiento.id))
 
         try:
             cantidad_int = int(cantidad)
@@ -822,6 +890,7 @@ def editar_movimiento(movimiento_id):
             maestro=maestro_nuevo,
             articulo_id=articulo_nuevo.id,
             cantidad=cantidad_int,
+            fecha_movimiento=fecha_movimiento,
             excluir_movimiento_id=movimiento.id,
         )
         if not es_valido:
@@ -839,6 +908,7 @@ def editar_movimiento(movimiento_id):
         movimiento.maestro_id = maestro_id
         movimiento.comentario = comentario
         movimiento.persona_recibe = persona_recibe
+        movimiento.fecha = fecha_movimiento
         movimiento.fecha_editado = datetime.utcnow()
 
         db.session.commit()
@@ -850,6 +920,7 @@ def editar_movimiento(movimiento_id):
         articulos=articulos,
         maestros=maestros,
         movimiento=movimiento,
+        fecha_default=fecha_default,
     )
 
 
@@ -978,6 +1049,88 @@ def control_departamentos():
         resumen_departamentos=resumen_departamentos,
         resumen_docentes=resumen_docentes,
     )
+
+
+@app.route("/herramientas-limpieza")
+def herramientas_limpieza():
+    herramientas = HerramientaLimpieza.query.order_by(
+        HerramientaLimpieza.tipo, HerramientaLimpieza.nombre
+    ).all()
+    salidas = SalidaHerramienta.query.order_by(SalidaHerramienta.fecha_se_llevo.desc()).all()
+    fecha_default = datetime.utcnow().strftime("%Y-%m-%dT%H:%M")
+    return render_template(
+        "herramientas_limpieza.html",
+        herramientas=herramientas,
+        salidas=salidas,
+        fecha_default=fecha_default,
+    )
+
+
+@app.route("/herramientas-limpieza/nueva", methods=["POST"])
+def nueva_herramienta_limpieza():
+    nombre = request.form.get("nombre", "").strip()
+    tipo = request.form.get("tipo", "").strip().upper()
+    responsable = request.form.get("responsable", "").strip()
+    observaciones = request.form.get("observaciones", "").strip() or None
+
+    if not nombre:
+        flash("El nombre de la herramienta/artículo es obligatorio.", "danger")
+        return redirect(url_for("herramientas_limpieza"))
+    if tipo not in {"HERRAMIENTA", "LIMPIEZA"}:
+        flash("El tipo debe ser HERRAMIENTA o LIMPIEZA.", "danger")
+        return redirect(url_for("herramientas_limpieza"))
+    if tipo == "LIMPIEZA":
+        responsable = "AREA DE RECURSOS MATERIALES"
+    if tipo == "HERRAMIENTA" and not responsable:
+        flash("Debes indicar el responsable.", "danger")
+        return redirect(url_for("herramientas_limpieza"))
+
+    item = HerramientaLimpieza(
+        nombre=nombre,
+        tipo=tipo,
+        responsable=responsable,
+        observaciones=observaciones,
+    )
+    db.session.add(item)
+    db.session.commit()
+    flash("Elemento registrado correctamente.", "success")
+    return redirect(url_for("herramientas_limpieza"))
+
+
+@app.route("/herramientas-limpieza/salida", methods=["POST"])
+def registrar_salida_herramienta():
+    herramienta_id = _to_int(request.form.get("herramienta_id"), default=0)
+    responsable = request.form.get("responsable", "").strip()
+    quien_se_lleva = request.form.get("quien_se_lleva", "").strip()
+    fecha_str = request.form.get("fecha_se_llevo", "")
+    comentario = request.form.get("comentario", "").strip() or None
+
+    fecha_se_llevo = _parse_fecha_form(fecha_str)
+    if herramienta_id <= 0:
+        flash("Debes seleccionar la herramienta o artículo de limpieza.", "danger")
+        return redirect(url_for("herramientas_limpieza"))
+    if not responsable:
+        flash("Debes indicar el responsable de la entrega.", "danger")
+        return redirect(url_for("herramientas_limpieza"))
+    if not quien_se_lleva:
+        flash("Debes indicar quién se lo lleva.", "danger")
+        return redirect(url_for("herramientas_limpieza"))
+    if fecha_se_llevo is None:
+        flash("La fecha no tiene un formato válido.", "danger")
+        return redirect(url_for("herramientas_limpieza"))
+
+    herramienta = HerramientaLimpieza.query.get_or_404(herramienta_id)
+    salida = SalidaHerramienta(
+        herramienta_id=herramienta.id,
+        responsable=responsable,
+        quien_se_lleva=quien_se_lleva,
+        fecha_se_llevo=fecha_se_llevo,
+        comentario=comentario,
+    )
+    db.session.add(salida)
+    db.session.commit()
+    flash("Salida registrada correctamente.", "success")
+    return redirect(url_for("herramientas_limpieza"))
 with app.app_context():
     db.create_all()
 
