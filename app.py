@@ -1,6 +1,7 @@
 from datetime import datetime
 from io import BytesIO
 from collections import defaultdict
+import os
 
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from flask_sqlalchemy import SQLAlchemy
@@ -8,9 +9,20 @@ import pandas as pd
 
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "change-this-secret-key"
-import os
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL") or "sqlite:///inventario.db"
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-this-secret-key")
+
+
+def _database_uri():
+    url = os.environ.get("DATABASE_URL", "").strip()
+    if not url:
+        return "sqlite:///inventario.db"
+    # Render/Postgres legacy URLs can arrive as postgres://
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql://", 1)
+    return url
+
+
+app.config["SQLALCHEMY_DATABASE_URI"] = _database_uri()
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
@@ -235,7 +247,8 @@ def _revert_movimiento_from_stock(articulo: Articulo, tipo: str, cantidad: int):
 
 
 def _year_expr():
-    return db.func.strftime("%Y", Movimiento.fecha)
+    # Compatible con SQLite y PostgreSQL
+    return db.extract("year", Movimiento.fecha)
 
 
 def _catalogo_departamentos():
@@ -273,7 +286,7 @@ def _obtener_consumo_departamento(anio: int, area: str, articulo_id: int, exclui
             Movimiento.tipo == "SALIDA",
             Movimiento.articulo_id == articulo_id,
             Maestro.area == area,
-            _year_expr() == str(anio),
+            _year_expr() == anio,
         )
     )
     if excluir_movimiento_id is not None:
@@ -1014,7 +1027,7 @@ def control_departamentos():
             ).label("salidas"),
         )
         .join(Movimiento, Movimiento.maestro_id == Maestro.id)
-        .filter(Maestro.area.isnot(None), _year_expr() == str(anio))
+        .filter(Maestro.area.isnot(None), _year_expr() == anio)
         .group_by(Maestro.area)
         .order_by(Maestro.area)
         .all()
@@ -1034,7 +1047,7 @@ def control_departamentos():
             ).label("salidas"),
         )
         .join(Movimiento, Movimiento.maestro_id == Maestro.id)
-        .filter(_year_expr() == str(anio))
+        .filter(_year_expr() == anio)
         .group_by(Maestro.id, Maestro.nombre, Maestro.area)
         .order_by(Maestro.nombre)
         .all()
@@ -1131,8 +1144,7 @@ def registrar_salida_herramienta():
     db.session.commit()
     flash("Salida registrada correctamente.", "success")
     return redirect(url_for("herramientas_limpieza"))
-with app.app_context():
-    db.create_all()
+
 
 if __name__ == "__main__":
     with app.app_context():
