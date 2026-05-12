@@ -6,6 +6,7 @@ import os
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from flask_sqlalchemy import SQLAlchemy
 import pandas as pd
+from sqlalchemy import inspect
 
 
 app = Flask(__name__)
@@ -207,6 +208,7 @@ class HerramientaLimpieza(db.Model):
     nombre = db.Column(db.String(150), nullable=False)
     tipo = db.Column(db.String(30), nullable=False, default="HERRAMIENTA")
     responsable = db.Column(db.String(120), nullable=False)
+    stock_actual = db.Column(db.Integer, default=1, nullable=False)
     activo = db.Column(db.Boolean, default=True, nullable=False)
     observaciones = db.Column(db.String(255), nullable=True)
 
@@ -221,6 +223,7 @@ class SalidaHerramienta(db.Model):
     herramienta_id = db.Column(
         db.Integer, db.ForeignKey("herramienta_limpieza.id"), nullable=False
     )
+    cantidad = db.Column(db.Integer, default=1, nullable=False)
     responsable = db.Column(db.String(120), nullable=False)
     quien_se_lleva = db.Column(db.String(120), nullable=False)
     fecha_se_llevo = db.Column(db.DateTime, nullable=False)
@@ -266,16 +269,71 @@ def _catalogo_departamentos():
 
 
 def _ensure_schema_updates():
-    # Ajustes ligeros de esquema para instalaciones existentes de SQLite
-    cols = {
-        row[1]
-        for row in db.session.execute(db.text("PRAGMA table_info(movimiento)")).fetchall()
-    }
-    if "persona_recibe" not in cols:
-        db.session.execute(
-            db.text("ALTER TABLE movimiento ADD COLUMN persona_recibe VARCHAR(150)")
-        )
-        db.session.commit()
+    dialect = db.engine.dialect.name
+
+    if dialect == "sqlite":
+        cols = {
+            row[1]
+            for row in db.session.execute(db.text("PRAGMA table_info(movimiento)")).fetchall()
+        }
+        if "persona_recibe" not in cols:
+            db.session.execute(
+                db.text("ALTER TABLE movimiento ADD COLUMN persona_recibe VARCHAR(150)")
+            )
+            db.session.commit()
+
+    insp = inspect(db.engine)
+
+    if "salida_herramienta" in insp.get_table_names():
+        scols = {c["name"] for c in insp.get_columns("salida_herramienta")}
+        if "cantidad" not in scols:
+            if dialect == "sqlite":
+                db.session.execute(
+                    db.text("ALTER TABLE salida_herramienta ADD COLUMN cantidad INTEGER DEFAULT 1")
+                )
+            else:
+                db.session.execute(
+                    db.text(
+                        "ALTER TABLE salida_herramienta ADD COLUMN IF NOT EXISTS cantidad INTEGER NOT NULL DEFAULT 1"
+                    )
+                )
+            db.session.commit()
+            db.session.execute(
+                db.text("UPDATE salida_herramienta SET cantidad = 1 WHERE cantidad IS NULL")
+            )
+            db.session.commit()
+
+    if "herramienta_limpieza" in insp.get_table_names():
+        hcols = {c["name"] for c in insp.get_columns("herramienta_limpieza")}
+        if "stock_actual" not in hcols:
+            if dialect == "sqlite":
+                db.session.execute(
+                    db.text("ALTER TABLE herramienta_limpieza ADD COLUMN stock_actual INTEGER DEFAULT 1")
+                )
+            else:
+                db.session.execute(
+                    db.text(
+                        "ALTER TABLE herramienta_limpieza ADD COLUMN IF NOT EXISTS stock_actual INTEGER NOT NULL DEFAULT 1"
+                    )
+                )
+            db.session.commit()
+            db.session.execute(
+                db.text("UPDATE herramienta_limpieza SET stock_actual = 1 WHERE stock_actual IS NULL")
+            )
+            db.session.commit()
+            # Salidas registradas antes de existir esta columna no bajaron existencia; sumamos esas cantidades una sola vez.
+            db.session.execute(
+                db.text(
+                    """
+                    UPDATE herramienta_limpieza
+                    SET stock_actual = stock_actual + COALESCE((
+                        SELECT SUM(s.cantidad) FROM salida_herramienta AS s
+                        WHERE s.herramienta_id = herramienta_limpieza.id
+                    ), 0)
+                    """
+                )
+            )
+            db.session.commit()
 
 
 def _obtener_consumo_departamento(anio: int, area: str, articulo_id: int, excluir_movimiento_id=None) -> int:
@@ -1071,11 +1129,20 @@ def herramientas_limpieza():
     ).all()
     salidas = SalidaHerramienta.query.order_by(SalidaHerramienta.fecha_se_llevo.desc()).all()
     fecha_default = datetime.utcnow().strftime("%Y-%m-%dT%H:%M")
+    totales_salida = dict(
+        db.session.query(
+            SalidaHerramienta.herramienta_id,
+            db.func.coalesce(db.func.sum(SalidaHerramienta.cantidad), 0),
+        )
+        .group_by(SalidaHerramienta.herramienta_id)
+        .all()
+    )
     return render_template(
         "herramientas_limpieza.html",
         herramientas=herramientas,
         salidas=salidas,
         fecha_default=fecha_default,
+        totales_salida=totales_salida,
     )
 
 
@@ -1103,6 +1170,7 @@ def nueva_herramienta_limpieza():
         tipo=tipo,
         responsable=responsable,
         observaciones=observaciones,
+        stock_actual=max(1, _to_int(request.form.get("cantidad_existencia"), default=1)),
     )
     db.session.add(item)
     db.session.commit()
@@ -1133,21 +1201,146 @@ def registrar_salida_herramienta():
         return redirect(url_for("herramientas_limpieza"))
 
     herramienta = HerramientaLimpieza.query.get_or_404(herramienta_id)
+    cantidad = max(1, _to_int(request.form.get("cantidad"), default=1))
+    if herramienta.stock_actual < cantidad:
+        flash(
+            f"No hay suficiente existencia de '{herramienta.nombre}'. Disponible: {herramienta.stock_actual}.",
+            "danger",
+        )
+        return redirect(url_for("herramientas_limpieza"))
+
     salida = SalidaHerramienta(
         herramienta_id=herramienta.id,
+        cantidad=cantidad,
         responsable=responsable,
         quien_se_lleva=quien_se_lleva,
         fecha_se_llevo=fecha_se_llevo,
         comentario=comentario,
     )
     db.session.add(salida)
+    herramienta.stock_actual -= cantidad
     db.session.commit()
     flash("Salida registrada correctamente.", "success")
     return redirect(url_for("herramientas_limpieza"))
 
 
+@app.route("/herramientas-limpieza/<int:hid>/editar", methods=["GET", "POST"])
+def editar_herramienta_limpieza(hid):
+    h = HerramientaLimpieza.query.get_or_404(hid)
+    if request.method == "POST":
+        nombre = request.form.get("nombre", "").strip()
+        tipo = request.form.get("tipo", "").strip().upper()
+        responsable = request.form.get("responsable", "").strip()
+        observaciones = request.form.get("observaciones", "").strip() or None
+        stock = max(0, _to_int(request.form.get("stock_actual"), default=0))
+
+        if not nombre:
+            flash("El nombre es obligatorio.", "danger")
+            return redirect(url_for("editar_herramienta_limpieza", hid=h.id))
+        if tipo not in {"HERRAMIENTA", "LIMPIEZA"}:
+            flash("Tipo inválido.", "danger")
+            return redirect(url_for("editar_herramienta_limpieza", hid=h.id))
+        if tipo == "LIMPIEZA":
+            responsable = "AREA DE RECURSOS MATERIALES"
+        if tipo == "HERRAMIENTA" and not responsable:
+            flash("Debes indicar el responsable.", "danger")
+            return redirect(url_for("editar_herramienta_limpieza", hid=h.id))
+
+        h.nombre = nombre
+        h.tipo = tipo
+        h.responsable = responsable
+        h.observaciones = observaciones
+        h.stock_actual = stock
+        db.session.commit()
+        flash("Elemento actualizado.", "success")
+        return redirect(url_for("herramientas_limpieza"))
+
+    return render_template("herramienta_limpieza_editar.html", h=h)
+
+
+@app.route("/herramientas-limpieza/<int:hid>/borrar", methods=["POST"])
+def borrar_herramienta_limpieza(hid):
+    h = HerramientaLimpieza.query.get_or_404(hid)
+    SalidaHerramienta.query.filter_by(herramienta_id=h.id).delete()
+    db.session.delete(h)
+    db.session.commit()
+    flash("Elemento y su historial de salidas eliminados.", "success")
+    return redirect(url_for("herramientas_limpieza"))
+
+
+@app.route("/herramientas-limpieza/salida/<int:sid>/editar", methods=["GET", "POST"])
+def editar_salida_herramienta(sid):
+    salida = SalidaHerramienta.query.get_or_404(sid)
+    herramientas = HerramientaLimpieza.query.order_by(
+        HerramientaLimpieza.tipo, HerramientaLimpieza.nombre
+    ).all()
+    if request.method == "POST":
+        herramienta_id = _to_int(request.form.get("herramienta_id"), default=0)
+        responsable = request.form.get("responsable", "").strip()
+        quien_se_lleva = request.form.get("quien_se_lleva", "").strip()
+        fecha_str = request.form.get("fecha_se_llevo", "")
+        comentario = request.form.get("comentario", "").strip() or None
+        cantidad = max(1, _to_int(request.form.get("cantidad"), default=1))
+
+        fecha_se_llevo = _parse_fecha_form(fecha_str)
+        if herramienta_id <= 0 or fecha_se_llevo is None:
+            flash("Datos incompletos o fecha inválida.", "danger")
+            return redirect(url_for("editar_salida_herramienta", sid=salida.id))
+        if not responsable or not quien_se_lleva:
+            flash("Responsable y quién se lo lleva son obligatorios.", "danger")
+            return redirect(url_for("editar_salida_herramienta", sid=salida.id))
+
+        h_vieja = salida.herramienta
+        h_nueva = HerramientaLimpieza.query.get_or_404(herramienta_id)
+        cantidad_anterior = salida.cantidad
+
+        # Devolver al inventario lo que tenía esta salida antes de aplicar cambios
+        h_vieja.stock_actual += cantidad_anterior
+
+        if h_nueva.stock_actual < cantidad:
+            h_vieja.stock_actual -= cantidad_anterior
+            flash(
+                f"No hay suficiente existencia en '{h_nueva.nombre}'. Disponible: {h_nueva.stock_actual}.",
+                "danger",
+            )
+            db.session.rollback()
+            return redirect(url_for("editar_salida_herramienta", sid=salida.id))
+
+        h_nueva.stock_actual -= cantidad
+        salida.herramienta_id = h_nueva.id
+        salida.cantidad = cantidad
+        salida.responsable = responsable
+        salida.quien_se_lleva = quien_se_lleva
+        salida.fecha_se_llevo = fecha_se_llevo
+        salida.comentario = comentario
+        db.session.commit()
+        flash("Salida actualizada.", "success")
+        return redirect(url_for("herramientas_limpieza"))
+
+    fecha_default = salida.fecha_se_llevo.strftime("%Y-%m-%dT%H:%M")
+    return render_template(
+        "salida_herramienta_editar.html",
+        salida=salida,
+        herramientas=herramientas,
+        fecha_default=fecha_default,
+    )
+
+
+@app.route("/herramientas-limpieza/salida/<int:sid>/borrar", methods=["POST"])
+def borrar_salida_herramienta(sid):
+    salida = SalidaHerramienta.query.get_or_404(sid)
+    h = salida.herramienta
+    h.stock_actual += salida.cantidad
+    db.session.delete(salida)
+    db.session.commit()
+    flash("Salida eliminada y existencia devuelta al inventario.", "success")
+    return redirect(url_for("herramientas_limpieza"))
+
+
+with app.app_context():
+    db.create_all()
+    _ensure_schema_updates()
+
+
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-        _ensure_schema_updates()
     app.run(debug=True)

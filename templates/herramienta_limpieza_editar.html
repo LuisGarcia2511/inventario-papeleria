@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Editar herramienta / limpieza{% endblock %}
+
+{% block content %}
+<h4 class="mb-3">Editar elemento</h4>
+<form method="post" class="row g-3">
+  <div class="col-md-6">
+    <label class="form-label">Nombre *</label>
+    <input type="text" name="nombre" class="form-control" required value="{{ h.nombre }}" />
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Tipo *</label>
+    <select name="tipo" class="form-select" required id="tipoElementoSelect">
+      <option value="HERRAMIENTA" {% if h.tipo == 'HERRAMIENTA' %}selected{% endif %}>HERRAMIENTA</option>
+      <option value="LIMPIEZA" {% if h.tipo == 'LIMPIEZA' %}selected{% endif %}>LIMPIEZA</option>
+    </select>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label" id="labelResponsableAlta">Responsable *</label>
+    <input
+      type="text"
+      name="responsable"
+      class="form-control"
+      id="responsableAltaInput"
+      value="{{ h.responsable }}"
+      required
+    />
+    <div class="form-text" id="ayudaResponsableAlta"></div>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Existencia (stock) *</label>
+    <input type="number" name="stock_actual" class="form-control" min="0" required value="{{ h.stock_actual }}" />
+  </div>
+  <div class="col-md-9">
+    <label class="form-label">Observaciones</label>
+    <input type="text" name="observaciones" class="form-control" value="{{ h.observaciones or '' }}" />
+  </div>
+  <div class="col-12">
+    <button type="submit" class="btn btn-primary">Guardar</button>
+    <a href="{{ url_for('herramientas_limpieza') }}" class="btn btn-secondary">Cancelar</a>
+  </div>
+</form>
+<script>
+  (function () {
+    const tipoSelect = document.getElementById("tipoElementoSelect");
+    const responsableAltaInput = document.getElementById("responsableAltaInput");
+    const labelResponsableAlta = document.getElementById("labelResponsableAlta");
+    const ayudaResponsableAlta = document.getElementById("ayudaResponsableAlta");
+    if (!tipoSelect || !responsableAltaInput) return;
+    function configurarResponsableAlta() {
+      const tipo = (tipoSelect.value || "").trim().toUpperCase();
+      if (tipo === "LIMPIEZA") {
+        responsableAltaInput.value = "AREA DE RECURSOS MATERIALES";
+        responsableAltaInput.readOnly = true;
+        responsableAltaInput.required = false;
+        labelResponsableAlta.textContent = "Responsable (automático)";
+        ayudaResponsableAlta.textContent = "Para LIMPIEZA se guarda automáticamente AREA DE RECURSOS MATERIALES.";
+      } else {
+        if (responsableAltaInput.value === "AREA DE RECURSOS MATERIALES") {
+          responsableAltaInput.value = "";
+        }
+        responsableAltaInput.readOnly = false;
+        responsableAltaInput.required = true;
+        labelResponsableAlta.textContent = "Responsable *";
+        ayudaResponsableAlta.textContent = "";
+      }
+    }
+    tipoSelect.addEventListener("change", configurarResponsableAlta);
+    configurarResponsableAlta();
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Editar salida herramienta{% endblock %}
+
+{% block content %}
+<h4 class="mb-3">Editar salida</h4>
+<form method="post" class="row g-3">
+  <div class="col-md-6">
+    <label class="form-label">Herramienta / artículo *</label>
+    <select name="herramienta_id" class="form-select" required>
+      {% for h in herramientas %}
+      <option value="{{ h.id }}" {% if salida.herramienta_id == h.id %}selected{% endif %}>
+        [{{ h.tipo }}] {{ h.nombre }} (existencia: {{ h.stock_actual }})
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Cantidad *</label>
+    <input type="number" name="cantidad" class="form-control" min="1" required value="{{ salida.cantidad }}" />
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Fecha *</label>
+    <input type="datetime-local" name="fecha_se_llevo" class="form-control" required value="{{ fecha_default }}" />
+  </div>
+  <div class="col-md-6">
+    <label class="form-label">Responsable que entrega *</label>
+    <input type="text" name="responsable" class="form-control" required value="{{ salida.responsable }}" />
+  </div>
+  <div class="col-md-6">
+    <label class="form-label">Quién se lo lleva *</label>
+    <input type="text" name="quien_se_lleva" class="form-control" required value="{{ salida.quien_se_lleva }}" />
+  </div>
+  <div class="col-12">
+    <label class="form-label">Comentario</label>
+    <input type="text" name="comentario" class="form-control" value="{{ salida.comentario or '' }}" />
+  </div>
+  <div class="col-12">
+    <button type="submit" class="btn btn-primary">Guardar cambios</button>
+    <a href="{{ url_for('herramientas_limpieza') }}" class="btn btn-secondary">Cancelar</a>
+  </div>
+</form>
+{% endblock %}
