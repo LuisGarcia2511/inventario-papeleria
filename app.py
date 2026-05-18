@@ -492,6 +492,129 @@ def export_movimientos():
     )
 
 
+def _excel_response(df: pd.DataFrame, sheet_name: str, filename_prefix: str):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name=sheet_name)
+    output.seek(0)
+    nombre = f"{filename_prefix}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=nombre,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.route("/export/herramientas-inventario.xlsx")
+def export_herramientas_inventario():
+    herramientas = HerramientaLimpieza.query.order_by(
+        HerramientaLimpieza.tipo, HerramientaLimpieza.nombre
+    ).all()
+    totales = dict(
+        db.session.query(
+            SalidaHerramienta.herramienta_id,
+            db.func.coalesce(db.func.sum(SalidaHerramienta.cantidad), 0),
+        )
+        .group_by(SalidaHerramienta.herramienta_id)
+        .all()
+    )
+    rows = []
+    for h in herramientas:
+        rows.append(
+            {
+                "TIPO": h.tipo,
+                "NOMBRE": h.nombre,
+                "RESPONSABLE": h.responsable,
+                "EXISTENCIA": h.stock_actual,
+                "TOTAL_SALIDAS": int(totales.get(h.id, 0)),
+                "ACTIVO": "SI" if h.activo else "NO",
+                "OBSERVACIONES": h.observaciones,
+            }
+        )
+    return _excel_response(
+        pd.DataFrame(rows), "INVENTARIO_HERRAMIENTAS", "herramientas_inventario"
+    )
+
+
+@app.route("/export/herramientas-salidas.xlsx")
+def export_herramientas_salidas():
+    salidas = SalidaHerramienta.query.order_by(SalidaHerramienta.fecha_se_llevo.desc()).all()
+    rows = []
+    for s in salidas:
+        h = s.herramienta
+        rows.append(
+            {
+                "FECHA_SALIDA": s.fecha_se_llevo.strftime("%Y-%m-%d %H:%M:%S"),
+                "TIPO": h.tipo if h else None,
+                "NOMBRE": h.nombre if h else None,
+                "CANTIDAD": s.cantidad,
+                "RESPONSABLE": s.responsable,
+                "QUIEN_SE_LLEVO": s.quien_se_lleva,
+                "COMENTARIO": s.comentario,
+                "FECHA_REGISTRO": s.fecha_registro.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
+    return _excel_response(pd.DataFrame(rows), "SALIDAS_HERRAMIENTAS", "herramientas_salidas")
+
+
+@app.route("/export/herramientas-completo.xlsx")
+def export_herramientas_completo():
+    """Un solo Excel con inventario y salidas (2 hojas)."""
+    herramientas = HerramientaLimpieza.query.order_by(
+        HerramientaLimpieza.tipo, HerramientaLimpieza.nombre
+    ).all()
+    totales = dict(
+        db.session.query(
+            SalidaHerramienta.herramienta_id,
+            db.func.coalesce(db.func.sum(SalidaHerramienta.cantidad), 0),
+        )
+        .group_by(SalidaHerramienta.herramienta_id)
+        .all()
+    )
+    inv_rows = []
+    for h in herramientas:
+        inv_rows.append(
+            {
+                "TIPO": h.tipo,
+                "NOMBRE": h.nombre,
+                "RESPONSABLE": h.responsable,
+                "EXISTENCIA": h.stock_actual,
+                "TOTAL_SALIDAS": int(totales.get(h.id, 0)),
+                "ACTIVO": "SI" if h.activo else "NO",
+                "OBSERVACIONES": h.observaciones,
+            }
+        )
+    salidas = SalidaHerramienta.query.order_by(SalidaHerramienta.fecha_se_llevo.desc()).all()
+    sal_rows = []
+    for s in salidas:
+        h = s.herramienta
+        sal_rows.append(
+            {
+                "FECHA_SALIDA": s.fecha_se_llevo.strftime("%Y-%m-%d %H:%M:%S"),
+                "TIPO": h.tipo if h else None,
+                "NOMBRE": h.nombre if h else None,
+                "CANTIDAD": s.cantidad,
+                "RESPONSABLE": s.responsable,
+                "QUIEN_SE_LLEVO": s.quien_se_lleva,
+                "COMENTARIO": s.comentario,
+                "FECHA_REGISTRO": s.fecha_registro.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame(inv_rows).to_excel(writer, index=False, sheet_name="INVENTARIO")
+        pd.DataFrame(sal_rows).to_excel(writer, index=False, sheet_name="SALIDAS")
+    output.seek(0)
+    nombre = f"herramientas_completo_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=nombre,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
 @app.route("/import/articulos", methods=["GET", "POST"])
 def importar_articulos_excel():
     if request.method == "POST":
