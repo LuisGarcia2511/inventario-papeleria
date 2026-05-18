@@ -5,6 +5,7 @@ import os
 
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.exc import IntegrityError
 import pandas as pd
 from sqlalchemy import inspect
 
@@ -115,6 +116,23 @@ def _to_int(val, default=0) -> int:
         return int(float(str(val).strip()))
     except Exception:
         return default
+
+
+def _validar_codigos_articulo(codigo_interno, codigo_barras, excluir_id=None):
+    """Evita duplicados antes de guardar (códigos únicos en BD)."""
+    if codigo_interno:
+        q = Articulo.query.filter_by(codigo_interno=codigo_interno)
+        if excluir_id:
+            q = q.filter(Articulo.id != excluir_id)
+        if q.first():
+            return f"Ya existe un artículo con el código interno «{codigo_interno}»."
+    if codigo_barras:
+        q = Articulo.query.filter_by(codigo_barras=codigo_barras)
+        if excluir_id:
+            q = q.filter(Articulo.id != excluir_id)
+        if q.first():
+            return f"Ya existe un artículo con el código de barras «{codigo_barras}»."
+    return None
 
 
 def _parse_fecha_form(fecha_str: str):
@@ -736,9 +754,19 @@ def nuevo_articulo():
         unidad = request.form.get("unidad", "").strip() or None
         categoria = request.form.get("categoria", "").strip() or None
         marca = request.form.get("marca", "").strip() or None
+        stock_inicial = _to_int(request.form.get("stock_inicial"), default=0)
 
         if not nombre:
             flash("El nombre del artículo es obligatorio.", "danger")
+            return redirect(url_for("nuevo_articulo"))
+
+        if stock_inicial < 0:
+            flash("El stock inicial no puede ser negativo.", "danger")
+            return redirect(url_for("nuevo_articulo"))
+
+        msg_dup = _validar_codigos_articulo(codigo_interno, codigo_barras)
+        if msg_dup:
+            flash(msg_dup, "danger")
             return redirect(url_for("nuevo_articulo"))
 
         articulo = Articulo(
@@ -748,9 +776,19 @@ def nuevo_articulo():
             unidad=unidad,
             categoria=categoria,
             marca=marca,
+            stock_actual=stock_inicial,
         )
-        db.session.add(articulo)
-        db.session.commit()
+        try:
+            db.session.add(articulo)
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash(
+                "No se pudo guardar: el código interno o el código de barras ya está en uso por otro artículo.",
+                "danger",
+            )
+            return redirect(url_for("nuevo_articulo"))
+
         flash("Artículo creado correctamente.", "success")
         return redirect(url_for("listar_articulos"))
 
@@ -772,12 +810,33 @@ def editar_articulo(articulo_id):
         articulo.unidad = request.form.get("unidad", "").strip() or None
         articulo.categoria = request.form.get("categoria", "").strip() or None
         articulo.marca = request.form.get("marca", "").strip() or None
+        stock = _to_int(request.form.get("stock_inicial"), default=articulo.stock_actual)
+        if stock < 0:
+            flash("El stock no puede ser negativo.", "danger")
+            return redirect(url_for("editar_articulo", articulo_id=articulo.id))
+        articulo.stock_actual = stock
 
         if not articulo.nombre:
             flash("El nombre del artículo es obligatorio.", "danger")
             return redirect(url_for("editar_articulo", articulo_id=articulo.id))
 
-        db.session.commit()
+        msg_dup = _validar_codigos_articulo(
+            articulo.codigo_interno, articulo.codigo_barras, excluir_id=articulo.id
+        )
+        if msg_dup:
+            flash(msg_dup, "danger")
+            return redirect(url_for("editar_articulo", articulo_id=articulo.id))
+
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash(
+                "No se pudo guardar: el código interno o el código de barras ya está en uso.",
+                "danger",
+            )
+            return redirect(url_for("editar_articulo", articulo_id=articulo.id))
+
         flash("Artículo actualizado correctamente.", "success")
         return redirect(url_for("listar_articulos"))
 

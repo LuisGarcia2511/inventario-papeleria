@@ -30,7 +30,9 @@
       name="codigo_interno"
       value="{{ articulo.codigo_interno if articulo else '' }}"
       class="form-control"
+      placeholder="Ej. P242 (debe ser único)"
     />
+    <div class="form-text">Si repites un código que ya existe, no dejará guardar.</div>
   </div>
   <div class="col-md-3">
     <label class="form-label">Código de barras</label>
@@ -61,6 +63,17 @@
     />
   </div>
   <div class="col-md-3">
+    <label class="form-label">Stock inicial</label>
+    <input
+      type="number"
+      name="stock_inicial"
+      class="form-control"
+      min="0"
+      value="{{ articulo.stock_actual if articulo else '0' }}"
+    />
+    <div class="form-text">Cantidad con la que entra al inventario.</div>
+  </div>
+  <div class="col-md-3">
     <label class="form-label">Marca</label>
     <input
       type="text"
@@ -75,4 +88,3 @@
   </div>
 </form>
 {% endblock %}
-
