@@ -3,7 +3,21 @@ from io import BytesIO
 from collections import defaultdict
 import os
 
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file
+# En algunos Windows, `platform` puede quedarse colgado consultando WMI,
+# lo que hace MUY lento importar SQLAlchemy/Flask-SQLAlchemy.
+# Este parche evita esa consulta y acelera el arranque.
+if os.name == "nt":
+    try:
+        import platform
+
+        if hasattr(platform, "_wmi_query"):
+            # `platform._win32_ver()` espera 5 valores de `_wmi_query()`
+            # Estructura: (version, product_type, ptype, spmajor, spminor)
+            platform._wmi_query = lambda *args, **kwargs: ("10", "1", "workstation", "0", "0")  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import IntegrityError
 import pandas as pd
@@ -267,9 +281,29 @@ def _revert_movimiento_from_stock(articulo: Articulo, tipo: str, cantidad: int):
         articulo.stock_actual += cantidad
 
 
-def _year_expr():
-    # Compatible con SQLite y PostgreSQL
-    return db.extract("year", Movimiento.fecha)
+# Ciclo escolar: del 1 de agosto al 31 de julio del año siguiente
+MES_INICIO_CICLO = 8
+DIA_INICIO_CICLO = 1
+
+
+def _anio_ciclo_escolar(dt=None) -> int:
+    dt = dt or datetime.utcnow()
+    return dt.year if dt.month >= MES_INICIO_CICLO else dt.year - 1
+
+
+def _rango_ciclo_escolar(anio: int):
+    inicio = datetime(anio, MES_INICIO_CICLO, DIA_INICIO_CICLO)
+    fin = datetime(anio + 1, MES_INICIO_CICLO, DIA_INICIO_CICLO)
+    return inicio, fin
+
+
+def _etiqueta_ciclo(anio: int) -> str:
+    return f"1 ago {anio} – 31 jul {anio + 1}"
+
+
+def _filtro_fecha_ciclo(query, anio: int):
+    inicio, fin = _rango_ciclo_escolar(anio)
+    return query.filter(Movimiento.fecha >= inicio, Movimiento.fecha < fin)
 
 
 def _catalogo_departamentos():
@@ -362,9 +396,9 @@ def _obtener_consumo_departamento(anio: int, area: str, articulo_id: int, exclui
             Movimiento.tipo == "SALIDA",
             Movimiento.articulo_id == articulo_id,
             Maestro.area == area,
-            _year_expr() == anio,
         )
     )
+    query = _filtro_fecha_ciclo(query, anio)
     if excluir_movimiento_id is not None:
         query = query.filter(Movimiento.id != excluir_movimiento_id)
     return int(query.scalar() or 0)
@@ -381,17 +415,21 @@ def _validar_cupo_departamento(
     if tipo != "SALIDA" or not maestro or not maestro.area:
         return True, None
 
-    anio_actual = (fecha_movimiento or datetime.utcnow()).year
+    anio_ciclo = _anio_ciclo_escolar(fecha_movimiento or datetime.utcnow())
     cupo = CupoDepartamento.query.filter_by(
-        anio=anio_actual,
+        anio=anio_ciclo,
         area=maestro.area,
         articulo_id=articulo_id,
     ).first()
     if not cupo:
-        return True, None
+        return (
+            False,
+            f"No hay cupo anual configurado para '{maestro.area}' y este artículo en el ciclo {_etiqueta_ciclo(anio_ciclo)}. "
+            "Configúralo en Control departamentos antes de registrar la salida.",
+        )
 
     consumido = _obtener_consumo_departamento(
-        anio=anio_actual,
+        anio=anio_ciclo,
         area=maestro.area,
         articulo_id=articulo_id,
         excluir_movimiento_id=excluir_movimiento_id,
@@ -400,7 +438,9 @@ def _validar_cupo_departamento(
     if cantidad > disponible:
         return (
             False,
-            f"El departamento '{maestro.area}' ya no tiene cupo suficiente para este artículo. Disponible: {max(disponible, 0)} de {cupo.cantidad_maxima} en {anio_actual}.",
+            f"Cupo insuficiente para '{maestro.area}' (ciclo {_etiqueta_ciclo(anio_ciclo)}). "
+            f"Puede pedir como máximo {max(disponible, 0)} pza(s) de {cupo.cantidad_maxima} autorizadas "
+            f"(ya consumió {consumido}).",
         )
     return True, None
 
@@ -1190,13 +1230,53 @@ def borrar_movimiento(movimiento_id):
     return redirect(url_for("index"))
 
 
+@app.route("/api/cupo-disponible")
+def api_cupo_disponible():
+    maestro_id = _to_int(request.args.get("maestro_id"), default=0)
+    articulo_id = _to_int(request.args.get("articulo_id"), default=0)
+    fecha_str = request.args.get("fecha", "")
+    fecha = _parse_fecha_form(fecha_str) if fecha_str else datetime.utcnow()
+
+    if maestro_id <= 0 or articulo_id <= 0:
+        return jsonify({"ok": False, "mensaje": "Selecciona docente y artículo."})
+
+    maestro = Maestro.query.get(maestro_id)
+    if not maestro or not maestro.area:
+        return jsonify({"ok": False, "mensaje": "El docente no tiene departamento asignado."})
+
+    anio_ciclo = _anio_ciclo_escolar(fecha)
+    cupo = CupoDepartamento.query.filter_by(
+        anio=anio_ciclo, area=maestro.area, articulo_id=articulo_id
+    ).first()
+    if not cupo:
+        return jsonify(
+            {
+                "ok": False,
+                "mensaje": f"Sin cupo configurado para {maestro.area} en ciclo {_etiqueta_ciclo(anio_ciclo)}.",
+            }
+        )
+
+    consumido = _obtener_consumo_departamento(anio_ciclo, maestro.area, articulo_id)
+    disponible = cupo.cantidad_maxima - consumido
+    return jsonify(
+        {
+            "ok": True,
+            "ciclo": _etiqueta_ciclo(anio_ciclo),
+            "maximo": cupo.cantidad_maxima,
+            "consumido": consumido,
+            "disponible": max(disponible, 0),
+            "mensaje": f"Cupo ciclo {_etiqueta_ciclo(anio_ciclo)}: puede pedir {max(disponible, 0)} de {cupo.cantidad_maxima} pza(s).",
+        }
+    )
+
+
 @app.route("/control/departamentos", methods=["GET", "POST"])
 def control_departamentos():
-    anio = _to_int(request.args.get("anio"), default=datetime.utcnow().year)
+    anio = _to_int(request.args.get("anio"), default=_anio_ciclo_escolar())
     departamentos = _catalogo_departamentos()
 
     if request.method == "POST":
-        anio_form = _to_int(request.form.get("anio"), default=datetime.utcnow().year)
+        anio_form = _to_int(request.form.get("anio"), default=_anio_ciclo_escolar())
         area = request.form.get("area", "").strip()
         articulo_id = _to_int(request.form.get("articulo_id"), default=0)
         cantidad_maxima = _to_int(request.form.get("cantidad_maxima"), default=-1)
@@ -1254,6 +1334,8 @@ def control_departamentos():
             }
         )
 
+    inicio_ciclo, fin_ciclo = _rango_ciclo_escolar(anio)
+
     resumen_departamentos = (
         db.session.query(
             Maestro.area.label("area"),
@@ -1267,7 +1349,11 @@ def control_departamentos():
             ).label("salidas"),
         )
         .join(Movimiento, Movimiento.maestro_id == Maestro.id)
-        .filter(Maestro.area.isnot(None), _year_expr() == anio)
+        .filter(
+            Maestro.area.isnot(None),
+            Movimiento.fecha >= inicio_ciclo,
+            Movimiento.fecha < fin_ciclo,
+        )
         .group_by(Maestro.area)
         .order_by(Maestro.area)
         .all()
@@ -1287,7 +1373,7 @@ def control_departamentos():
             ).label("salidas"),
         )
         .join(Movimiento, Movimiento.maestro_id == Maestro.id)
-        .filter(_year_expr() == anio)
+        .filter(Movimiento.fecha >= inicio_ciclo, Movimiento.fecha < fin_ciclo)
         .group_by(Maestro.id, Maestro.nombre, Maestro.area)
         .order_by(Maestro.nombre)
         .all()
@@ -1296,12 +1382,65 @@ def control_departamentos():
     return render_template(
         "control_departamentos.html",
         anio=anio,
+        etiqueta_ciclo=_etiqueta_ciclo(anio),
         articulos=articulos,
         departamentos=departamentos,
         cupos_resumen=cupos_resumen,
         resumen_departamentos=resumen_departamentos,
         resumen_docentes=resumen_docentes,
     )
+
+
+@app.route("/control/departamentos/cupo/<int:cupo_id>/editar", methods=["GET", "POST"])
+def editar_cupo_departamento(cupo_id):
+    cupo = CupoDepartamento.query.get_or_404(cupo_id)
+    departamentos = _catalogo_departamentos()
+    articulos = Articulo.query.order_by(Articulo.nombre).all()
+
+    if request.method == "POST":
+        cupo.anio = _to_int(request.form.get("anio"), default=cupo.anio)
+        cupo.area = request.form.get("area", "").strip()
+        cupo.articulo_id = _to_int(request.form.get("articulo_id"), default=cupo.articulo_id)
+        cupo.cantidad_maxima = _to_int(request.form.get("cantidad_maxima"), default=-1)
+
+        if not cupo.area:
+            flash("El departamento es obligatorio.", "danger")
+            return redirect(url_for("editar_cupo_departamento", cupo_id=cupo.id))
+        if cupo.cantidad_maxima < 0:
+            flash("El cupo debe ser 0 o mayor.", "danger")
+            return redirect(url_for("editar_cupo_departamento", cupo_id=cupo.id))
+
+        duplicado = CupoDepartamento.query.filter(
+            CupoDepartamento.anio == cupo.anio,
+            CupoDepartamento.area == cupo.area,
+            CupoDepartamento.articulo_id == cupo.articulo_id,
+            CupoDepartamento.id != cupo.id,
+        ).first()
+        if duplicado:
+            flash("Ya existe otro cupo con ese año, departamento y artículo.", "danger")
+            return redirect(url_for("editar_cupo_departamento", cupo_id=cupo.id))
+
+        db.session.commit()
+        flash("Cupo actualizado correctamente.", "success")
+        return redirect(url_for("control_departamentos", anio=cupo.anio))
+
+    return render_template(
+        "cupo_editar.html",
+        cupo=cupo,
+        departamentos=departamentos,
+        articulos=articulos,
+        etiqueta_ciclo=_etiqueta_ciclo(cupo.anio),
+    )
+
+
+@app.route("/control/departamentos/cupo/<int:cupo_id>/borrar", methods=["POST"])
+def borrar_cupo_departamento(cupo_id):
+    cupo = CupoDepartamento.query.get_or_404(cupo_id)
+    anio = cupo.anio
+    db.session.delete(cupo)
+    db.session.commit()
+    flash("Cupo eliminado.", "success")
+    return redirect(url_for("control_departamentos", anio=anio))
 
 
 @app.route("/herramientas-limpieza")

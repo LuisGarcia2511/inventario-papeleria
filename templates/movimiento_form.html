@@ -12,7 +12,7 @@
 <form method="post" class="row g-3">
   <div class="col-md-3">
     <label class="form-label">Tipo de movimiento *</label>
-    <select name="tipo" class="form-select" required>
+    <select name="tipo" class="form-select" required id="tipoMovimientoSelect">
       <option value="ENTRADA" {% if movimiento and movimiento.tipo == 'ENTRADA' %}selected{% endif %}>
         ENTRADA (entra al inventario)
       </option>
@@ -44,7 +44,7 @@
 
   <div class="col-md-4">
     <label class="form-label">Maestro (solo para salidas)</label>
-    <select name="maestro_id" class="form-select">
+    <select name="maestro_id" class="form-select" id="maestroSelect">
       <option value="">-- Ninguno / No aplica --</option>
       {% for m in maestros %}
       <option value="{{ m.id }}" {% if movimiento and movimiento.maestro_id == m.id %}selected{% endif %}>
@@ -114,6 +114,10 @@
     <div class="form-text">En SALIDA este dato es obligatorio.</div>
   </div>
 
+  <div class="col-12" id="cupoInfoBox" style="display: none;">
+    <div class="alert alert-info mb-0 py-2" id="cupoInfoText"></div>
+  </div>
+
   <div class="col-12">
     <button type="submit" class="btn btn-primary">
       {% if movimiento %}Guardar cambios{% else %}Guardar movimiento{% endif %}
@@ -125,13 +129,18 @@
   (function () {
     const input = document.querySelector('input[name="codigo_barras"]');
     const select = document.getElementById("articuloSelect");
-    if (!input || !select) return;
+    const maestroSelect = document.getElementById("maestroSelect");
+    const tipoSelect = document.getElementById("tipoMovimientoSelect");
+    const fechaInput = document.querySelector('input[name="fecha"]');
+    const cupoBox = document.getElementById("cupoInfoBox");
+    const cupoText = document.getElementById("cupoInfoText");
 
     function normalizar(valor) {
       return (valor || "").trim().toUpperCase();
     }
 
     function intentarSeleccionar() {
+      if (!input || !select) return;
       const valor = normalizar(input.value);
       if (!valor) return;
 
@@ -150,24 +159,63 @@
 
       if (match) {
         select.value = match.value;
+        consultarCupo();
       }
     }
 
-    input.addEventListener("change", intentarSeleccionar);
-    input.addEventListener("input", (e) => {
-      // Cuando el lector termina (suele mandar Enter), disparamos la búsqueda
-      if (e.inputType === "insertLineBreak") {
-        intentarSeleccionar();
+    async function consultarCupo() {
+      if (!cupoBox || !cupoText || !tipoSelect || !maestroSelect || !select) return;
+      if (tipoSelect.value !== "SALIDA") {
+        cupoBox.style.display = "none";
+        return;
       }
-    });
+      const maestroId = maestroSelect.value;
+      const articuloId = select.value;
+      if (!maestroId || !articuloId) {
+        cupoBox.style.display = "none";
+        return;
+      }
+      const params = new URLSearchParams({
+        maestro_id: maestroId,
+        articulo_id: articuloId,
+        fecha: fechaInput ? fechaInput.value : "",
+      });
+      try {
+        const res = await fetch("/api/cupo-disponible?" + params.toString());
+        const data = await res.json();
+        cupoBox.style.display = "block";
+        if (data.ok) {
+          cupoText.className = "alert alert-info mb-0 py-2";
+          cupoText.textContent = data.mensaje;
+        } else {
+          cupoText.className = "alert alert-warning mb-0 py-2";
+          cupoText.textContent = data.mensaje;
+        }
+      } catch (e) {
+        cupoBox.style.display = "none";
+      }
+    }
 
-    // Por si el lector solo teclea rápido + Enter
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        intentarSeleccionar();
-      }
-    });
+    if (input && select) {
+      input.addEventListener("change", intentarSeleccionar);
+      input.addEventListener("input", (e) => {
+        if (e.inputType === "insertLineBreak") {
+          intentarSeleccionar();
+        }
+      });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          intentarSeleccionar();
+        }
+      });
+    }
+
+    if (select) select.addEventListener("change", consultarCupo);
+    if (maestroSelect) maestroSelect.addEventListener("change", consultarCupo);
+    if (tipoSelect) tipoSelect.addEventListener("change", consultarCupo);
+    if (fechaInput) fechaInput.addEventListener("change", consultarCupo);
+    consultarCupo();
   })();
 </script>
 {% endblock %}

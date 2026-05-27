@@ -4,10 +4,19 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-  <h4 class="mb-0">Control anual por departamentos y docentes</h4>
-  <form method="get" class="d-flex gap-2">
-    <input type="number" name="anio" class="form-control" min="2000" value="{{ anio }}" />
-    <button type="submit" class="btn btn-outline-primary">Ver año</button>
+  <div>
+    <h4 class="mb-1">Control anual por departamentos y docentes</h4>
+    <p class="text-muted small mb-0">
+      Ciclo escolar: <strong>{{ etiqueta_ciclo }}</strong> (del 1 de agosto al 31 de julio).
+      Las salidas de papelería descuentan del cupo del departamento del docente.
+    </p>
+  </div>
+  <form method="get" class="d-flex gap-2 align-items-end">
+    <div>
+      <label class="form-label small mb-0">Año inicio ciclo</label>
+      <input type="number" name="anio" class="form-control" min="2000" value="{{ anio }}" />
+    </div>
+    <button type="submit" class="btn btn-outline-primary">Ver ciclo</button>
   </form>
 </div>
 
@@ -16,7 +25,7 @@
     <h6 class="card-title">Configurar cupo anual por artículo</h6>
     <form method="post" class="row g-3">
       <div class="col-md-2">
-        <label class="form-label">Año</label>
+        <label class="form-label">Año ciclo</label>
         <input type="number" name="anio" class="form-control" min="2000" value="{{ anio }}" required />
       </div>
       <div class="col-md-4">
@@ -48,7 +57,7 @@
   </div>
 </div>
 
-<h5 class="mb-2">Cupos del año {{ anio }}</h5>
+<h5 class="mb-2">Cupos del ciclo {{ etiqueta_ciclo }}</h5>
 <div class="table-responsive mb-4">
   <table class="table table-striped table-sm align-middle">
     <thead>
@@ -56,8 +65,9 @@
         <th>Departamento</th>
         <th>Artículo</th>
         <th>Cupo anual</th>
-        <th>Consumido</th>
+        <th>Consumido (salidas)</th>
         <th>Disponible</th>
+        <th class="text-end">Acciones</th>
       </tr>
     </thead>
     <tbody>
@@ -70,17 +80,28 @@
         <td class="{% if c.disponible <= 0 %}text-danger fw-bold{% else %}text-success{% endif %}">
           {{ c.disponible }}
         </td>
+        <td class="text-end">
+          <a href="{{ url_for('editar_cupo_departamento', cupo_id=c.id) }}" class="btn btn-sm btn-outline-primary">Editar</a>
+          <form
+            method="post"
+            action="{{ url_for('borrar_cupo_departamento', cupo_id=c.id) }}"
+            class="d-inline"
+            onsubmit="return confirm('¿Eliminar este cupo?')"
+          >
+            <button type="submit" class="btn btn-sm btn-outline-danger">Borrar</button>
+          </form>
+        </td>
       </tr>
       {% else %}
       <tr>
-        <td colspan="5" class="text-center text-muted">No hay cupos configurados para este año.</td>
+        <td colspan="6" class="text-center text-muted">No hay cupos configurados para este ciclo.</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 
-<h5 class="mb-2">Entradas y salidas por departamento ({{ anio }})</h5>
+<h5 class="mb-2">Entradas y salidas por departamento ({{ etiqueta_ciclo }})</h5>
 <div class="table-responsive mb-4">
   <table class="table table-striped table-sm align-middle">
     <thead>
@@ -99,14 +120,14 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="3" class="text-center text-muted">Sin movimientos por departamento en este año.</td>
+        <td colspan="3" class="text-center text-muted">Sin movimientos por departamento en este ciclo.</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 
-<h5 class="mb-2">Entradas y salidas por docente ({{ anio }})</h5>
+<h5 class="mb-2">Entradas y salidas por docente ({{ etiqueta_ciclo }})</h5>
 <div class="table-responsive">
   <table class="table table-striped table-sm align-middle">
     <thead>
@@ -127,7 +148,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="4" class="text-center text-muted">Sin movimientos por docente en este año.</td>
+        <td colspan="4" class="text-center text-muted">Sin movimientos por docente en este ciclo.</td>
       </tr>
       {% endfor %}
     </tbody>

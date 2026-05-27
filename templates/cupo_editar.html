@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Editar cupo - Control departamentos{% endblock %}
+
+{% block content %}
+<h4 class="mb-3">Editar cupo anual</h4>
+<p class="text-muted">Ciclo escolar: <strong>{{ etiqueta_ciclo }}</strong> (inicia 1 de agosto).</p>
+
+<form method="post" class="row g-3">
+  <div class="col-md-2">
+    <label class="form-label">Año del ciclo *</label>
+    <input type="number" name="anio" class="form-control" min="2000" value="{{ cupo.anio }}" required />
+    <div class="form-text">Año en que inicia el ciclo (agosto).</div>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Departamento *</label>
+    <select name="area" class="form-select" required>
+      {% for area in departamentos %}
+      <option value="{{ area }}" {% if cupo.area == area %}selected{% endif %}>{{ area }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Artículo *</label>
+    <select name="articulo_id" class="form-select" required>
+      {% for a in articulos %}
+      <option value="{{ a.id }}" {% if cupo.articulo_id == a.id %}selected{% endif %}>{{ a.nombre }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <label class="form-label">Cupo anual *</label>
+    <input type="number" name="cantidad_maxima" class="form-control" min="0" value="{{ cupo.cantidad_maxima }}" required />
+  </div>
+  <div class="col-12">
+    <button type="submit" class="btn btn-primary">Guardar cambios</button>
+    <a href="{{ url_for('control_departamentos', anio=cupo.anio) }}" class="btn btn-secondary">Cancelar</a>
+  </div>
+</form>
+{% endblock %}
