@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 
 {% block title %}Inicio - Inventario{% endblock %}
+<h2>Artículos</h2>
 
+{% for a in articulos %}
+  <p>{{ a.nombre }} - {{ a.stock }}</p>
+{% endfor %}
 {% block content %}
 <div class="row align-items-stretch mb-4 g-4">
   <div class="col-lg-7">
@@ -133,6 +137,9 @@
           <span class="badge badge-entrada">{{ m.tipo }}</span>
           {% else %}
           <span class="badge badge-salida">{{ m.tipo }}</span>
+          {% endif %}
+          {% if m.sin_requisicion %}
+          <span class="badge text-bg-warning ms-1">sin requisición</span>
           {% endif %}
         </td>
         <td>{{ m.articulo.nombre }}</td>

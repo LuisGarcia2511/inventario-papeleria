@@ -114,6 +114,25 @@
     <div class="form-text">En SALIDA este dato es obligatorio.</div>
   </div>
 
+  <div class="col-md-4" id="sinRequisicionBox" style="display: none;">
+    <div class="form-check mt-4">
+      <input
+        class="form-check-input"
+        type="checkbox"
+        name="sin_requisicion"
+        id="sinRequisicionCheck"
+        value="1"
+        {% if movimiento and movimiento.sin_requisicion %}checked{% endif %}
+      />
+      <label class="form-check-label" for="sinRequisicionCheck">
+        Pedido sin requisición
+      </label>
+      <div class="form-text">
+        Usa esto si el artículo no está en la requisición anual del departamento (ej. clips).
+      </div>
+    </div>
+  </div>
+
   <div class="col-12" id="cupoInfoBox" style="display: none;">
     <div class="alert alert-info mb-0 py-2" id="cupoInfoText"></div>
   </div>
@@ -134,39 +153,35 @@
     const fechaInput = document.querySelector('input[name="fecha"]');
     const cupoBox = document.getElementById("cupoInfoBox");
     const cupoText = document.getElementById("cupoInfoText");
+    const sinRequisicionBox = document.getElementById("sinRequisicionBox");
+    const sinRequisicionCheck = document.getElementById("sinRequisicionCheck");
+
+    function actualizarOpcionesSalida() {
+      const esSalida = tipoSelect && tipoSelect.value === "SALIDA";
+      if (sinRequisicionBox) {
+        sinRequisicionBox.style.display = esSalida ? "block" : "none";
+      }
+      if (!esSalida && sinRequisicionCheck) {
+        sinRequisicionCheck.checked = false;
+      }
+    }
 
     function normalizar(valor) {
       return (valor || "").trim().toUpperCase();
     }
 
-    function intentarSeleccionar() {
-      if (!input || !select) return;
-      const valor = normalizar(input.value);
-      if (!valor) return;
-
-      let match = null;
-      for (const opt of select.options) {
-        if (!opt.value) continue;
-        const cb = normalizar(opt.getAttribute("data-cb"));
-        const ci = normalizar(opt.getAttribute("data-ci"));
-        const texto = normalizar(opt.textContent || "");
-
-        if (valor === cb || valor === ci || texto.includes(valor)) {
-          match = opt;
-          break;
-        }
-      }
-
-      if (match) {
-        select.value = match.value;
-        consultarCupo();
-      }
-    }
-
     async function consultarCupo() {
       if (!cupoBox || !cupoText || !tipoSelect || !maestroSelect || !select) return;
+      actualizarOpcionesSalida();
       if (tipoSelect.value !== "SALIDA") {
         cupoBox.style.display = "none";
+        return;
+      }
+      if (sinRequisicionCheck && sinRequisicionCheck.checked) {
+        cupoBox.style.display = "block";
+        cupoText.className = "alert alert-secondary mb-0 py-2";
+        cupoText.textContent =
+          "Este pedido se registrará como SIN REQUISICIÓN y no descontará del cupo anual.";
         return;
       }
       const maestroId = maestroSelect.value;
@@ -196,6 +211,30 @@
       }
     }
 
+    function intentarSeleccionar() {
+      if (!input || !select) return;
+      const valor = normalizar(input.value);
+      if (!valor) return;
+
+      let match = null;
+      for (const opt of select.options) {
+        if (!opt.value) continue;
+        const cb = normalizar(opt.getAttribute("data-cb"));
+        const ci = normalizar(opt.getAttribute("data-ci"));
+        const texto = normalizar(opt.textContent || "");
+
+        if (valor === cb || valor === ci || texto.includes(valor)) {
+          match = opt;
+          break;
+        }
+      }
+
+      if (match) {
+        select.value = match.value;
+        consultarCupo();
+      }
+    }
+
     if (input && select) {
       input.addEventListener("change", intentarSeleccionar);
       input.addEventListener("input", (e) => {
@@ -215,6 +254,7 @@
     if (maestroSelect) maestroSelect.addEventListener("change", consultarCupo);
     if (tipoSelect) tipoSelect.addEventListener("change", consultarCupo);
     if (fechaInput) fechaInput.addEventListener("change", consultarCupo);
+    if (sinRequisicionCheck) sinRequisicionCheck.addEventListener("change", consultarCupo);
     consultarCupo();
   })();
 </script>

@@ -101,6 +101,48 @@
   </table>
 </div>
 
+<h5 class="mb-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+  <span>Pedidos sin requisición ({{ etiqueta_ciclo }})</span>
+  <a href="{{ url_for('export_sin_requisicion', anio=anio) }}" class="btn btn-outline-warning btn-sm">
+    Exportar reporte (Excel)
+  </a>
+</h5>
+<p class="text-muted small">
+  Artículos entregados que no estaban en la requisición anual del departamento (ej. clips u otros extras).
+</p>
+<div class="table-responsive mb-4">
+  <table class="table table-striped table-sm align-middle">
+    <thead>
+      <tr>
+        <th>Fecha</th>
+        <th>Departamento</th>
+        <th>Docente</th>
+        <th>Artículo</th>
+        <th>Cantidad</th>
+        <th>Quién recogió</th>
+        <th>Comentario</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in sin_requisicion_lista %}
+      <tr>
+        <td>{{ m.fecha.strftime("%d/%m/%Y %H:%M") }}</td>
+        <td>{{ m.maestro.area if m.maestro else "-" }}</td>
+        <td>{{ m.maestro.nombre if m.maestro else "-" }}</td>
+        <td>{{ m.articulo.nombre if m.articulo else "-" }}</td>
+        <td>{{ m.cantidad }}</td>
+        <td>{{ m.persona_recibe or "-" }}</td>
+        <td>{{ m.comentario or "" }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="7" class="text-center text-muted">Sin pedidos fuera de requisición en este ciclo.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
 <h5 class="mb-2">Entradas y salidas por departamento ({{ etiqueta_ciclo }})</h5>
 <div class="table-responsive mb-4">
   <table class="table table-striped table-sm align-middle">

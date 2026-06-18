@@ -39,7 +39,9 @@ def _database_uri():
 
 
 app.config["SQLALCHEMY_DATABASE_URI"] = _database_uri()
+print("USANDO DB:", _database_uri())
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+print("URL :", _database_uri())
 
 db = SQLAlchemy(app)
 
@@ -199,6 +201,7 @@ class Movimiento(db.Model):
     fecha_editado = db.Column(db.DateTime, nullable=True)
     comentario = db.Column(db.String(255), nullable=True)
     persona_recibe = db.Column(db.String(150), nullable=True)
+    sin_requisicion = db.Column(db.Boolean, default=False, nullable=False)
 
     articulo_id = db.Column(db.Integer, db.ForeignKey("articulo.id"), nullable=False)
     maestro_id = db.Column(db.Integer, db.ForeignKey("maestro.id"), nullable=True)
@@ -322,6 +325,7 @@ def _catalogo_departamentos():
 
 def _ensure_schema_updates():
     dialect = db.engine.dialect.name
+    insp = inspect(db.engine)
 
     if dialect == "sqlite":
         cols = {
@@ -333,8 +337,22 @@ def _ensure_schema_updates():
                 db.text("ALTER TABLE movimiento ADD COLUMN persona_recibe VARCHAR(150)")
             )
             db.session.commit()
-
-    insp = inspect(db.engine)
+        if "sin_requisicion" not in cols:
+            db.session.execute(
+                db.text(
+                    "ALTER TABLE movimiento ADD COLUMN sin_requisicion BOOLEAN NOT NULL DEFAULT 0"
+                )
+            )
+            db.session.commit()
+    elif "movimiento" in insp.get_table_names():
+        mcols = {c["name"] for c in insp.get_columns("movimiento")}
+        if "sin_requisicion" not in mcols:
+            db.session.execute(
+                db.text(
+                    "ALTER TABLE movimiento ADD COLUMN IF NOT EXISTS sin_requisicion BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            )
+            db.session.commit()
 
     if "salida_herramienta" in insp.get_table_names():
         scols = {c["name"] for c in insp.get_columns("salida_herramienta")}
@@ -396,6 +414,7 @@ def _obtener_consumo_departamento(anio: int, area: str, articulo_id: int, exclui
             Movimiento.tipo == "SALIDA",
             Movimiento.articulo_id == articulo_id,
             Maestro.area == area,
+            Movimiento.sin_requisicion.is_(False),
         )
     )
     query = _filtro_fecha_ciclo(query, anio)
@@ -411,7 +430,10 @@ def _validar_cupo_departamento(
     cantidad: int,
     fecha_movimiento: datetime = None,
     excluir_movimiento_id=None,
+    sin_requisicion: bool = False,
 ):
+    if sin_requisicion:
+        return True, None
     if tipo != "SALIDA" or not maestro or not maestro.area:
         return True, None
 
@@ -425,7 +447,7 @@ def _validar_cupo_departamento(
         return (
             False,
             f"No hay cupo anual configurado para '{maestro.area}' y este artículo en el ciclo {_etiqueta_ciclo(anio_ciclo)}. "
-            "Configúralo en Control departamentos antes de registrar la salida.",
+            "Marca la casilla «Pedido sin requisición» si el artículo no está en la requisición anual.",
         )
 
     consumido = _obtener_consumo_departamento(
@@ -449,11 +471,13 @@ def _validar_cupo_departamento(
 def index():
     total_articulos = Articulo.query.count()
     total_maestros = Maestro.query.count()
+
     total_entradas = (
         db.session.query(db.func.coalesce(db.func.sum(Movimiento.cantidad), 0))
         .filter(Movimiento.tipo == "ENTRADA")
         .scalar()
     )
+
     total_salida = (
         db.session.query(db.func.coalesce(db.func.sum(Movimiento.cantidad), 0))
         .filter(Movimiento.tipo == "SALIDA")
@@ -463,6 +487,9 @@ def index():
     orden_fecha = db.func.coalesce(Movimiento.fecha_editado, Movimiento.fecha)
     ultimos_movimientos = Movimiento.query.order_by(orden_fecha.desc()).limit(10).all()
 
+    # 🔥 ESTA LÍNEA ES LA CLAVE
+    articulos = Articulo.query.all()
+
     return render_template(
         "index.html",
         total_articulos=total_articulos,
@@ -470,6 +497,7 @@ def index():
         total_entradas=total_entradas,
         total_salida=total_salida,
         ultimos_movimientos=ultimos_movimientos,
+        articulos=articulos  # 👈 IMPORTANTE
     )
 
 
@@ -532,6 +560,7 @@ def export_movimientos():
                 "QUIEN_RECOGE": m.persona_recibe,
                 "CANTIDAD": m.cantidad,
                 "COMENTARIO": m.comentario,
+                "REQUISICION": "SIN REQUISICION" if m.sin_requisicion else "CON REQUISICION",
             }
         )
 
@@ -547,6 +576,44 @@ def export_movimientos():
         as_attachment=True,
         download_name=nombre,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.route("/export/sin-requisicion.xlsx")
+def export_sin_requisicion():
+    anio = _to_int(request.args.get("anio"), default=_anio_ciclo_escolar())
+    inicio_ciclo, fin_ciclo = _rango_ciclo_escolar(anio)
+    movimientos = (
+        Movimiento.query.join(Maestro, Maestro.id == Movimiento.maestro_id)
+        .filter(
+            Movimiento.tipo == "SALIDA",
+            Movimiento.sin_requisicion.is_(True),
+            Movimiento.fecha >= inicio_ciclo,
+            Movimiento.fecha < fin_ciclo,
+        )
+        .order_by(Movimiento.fecha.desc())
+        .all()
+    )
+    rows = []
+    for m in movimientos:
+        rows.append(
+            {
+                "FECHA": m.fecha.strftime("%Y-%m-%d %H:%M:%S"),
+                "DEPARTAMENTO": m.maestro.area if m.maestro else None,
+                "DOCENTE": m.maestro.nombre if m.maestro else None,
+                "ARTICULO": m.articulo.nombre if m.articulo else None,
+                "CODIGO": m.articulo.codigo_interno if m.articulo else None,
+                "CANTIDAD": m.cantidad,
+                "QUIEN_RECOGE": m.persona_recibe,
+                "COMENTARIO": m.comentario,
+                "ESTADO": "PEDIDO SIN REQUISICION",
+            }
+        )
+    df = pd.DataFrame(rows)
+    return _excel_response(
+        df,
+        "SIN_REQUISICION",
+        f"pedidos_sin_requisicion_{anio}",
     )
 
 
@@ -671,6 +738,46 @@ def export_herramientas_completo():
         download_name=nombre,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+
+@app.route("/import/herramientas", methods=["GET", "POST"])
+def importar_herramientas_excel():
+    if request.method == "POST":
+        f = request.files.get("archivo")
+        if not f:
+            flash("No se recibió ningún archivo.", "danger")
+            return redirect(url_for("importar_herramientas_excel"))
+
+        reemplazar = bool(request.form.get("reemplazar"))
+        try:
+            from importar_herramientas_csv import importar_excel_completo
+            import tempfile
+
+            with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+                f.save(tmp.name)
+                tmp_path = tmp.name
+
+            result = importar_excel_completo(tmp_path, reemplazar=reemplazar)
+            os.unlink(tmp_path)
+        except Exception as e:
+            flash(f"No pude importar el archivo. Error: {e}", "danger")
+            return redirect(url_for("importar_herramientas_excel"))
+
+        partes = []
+        if "inventario" in result:
+            inv = result["inventario"]
+            partes.append(
+                f"Inventario: {inv['creados']} nuevos, {inv['actualizados']} actualizados"
+            )
+        if "salidas" in result:
+            sal = result["salidas"]
+            partes.append(
+                f"Salidas: {sal['creados']} registradas, {sal['omitidos']} duplicadas omitidas"
+            )
+        flash("Importación lista. " + "; ".join(partes) + ".", "success")
+        return redirect(url_for("herramientas_limpieza"))
+
+    return render_template("importar_herramientas.html")
 
 
 @app.route("/import/articulos", methods=["GET", "POST"])
@@ -982,6 +1089,7 @@ def nuevo_movimiento():
         cantidad = request.form.get("cantidad")
         comentario = request.form.get("comentario", "").strip() or None
         persona_recibe = request.form.get("persona_recibe", "").strip() or None
+        sin_requisicion = bool(request.form.get("sin_requisicion"))
         fecha_str = request.form.get("fecha", "")
         fecha_movimiento = _parse_fecha_form(fecha_str)
 
@@ -1049,6 +1157,7 @@ def nuevo_movimiento():
             articulo_id=articulo.id,
             cantidad=cantidad_int,
             fecha_movimiento=fecha_movimiento,
+            sin_requisicion=sin_requisicion,
         )
         if not es_valido:
             flash(mensaje, "danger")
@@ -1062,6 +1171,7 @@ def nuevo_movimiento():
             comentario=comentario,
             persona_recibe=persona_recibe,
             fecha=fecha_movimiento,
+            sin_requisicion=sin_requisicion if tipo == "SALIDA" else False,
         )
         db.session.add(movimiento)
 
@@ -1112,6 +1222,7 @@ def editar_movimiento(movimiento_id):
         cantidad = request.form.get("cantidad")
         comentario = request.form.get("comentario", "").strip() or None
         persona_recibe = request.form.get("persona_recibe", "").strip() or None
+        sin_requisicion = bool(request.form.get("sin_requisicion"))
         fecha_str = request.form.get("fecha", "")
         fecha_movimiento = _parse_fecha_form(fecha_str)
 
@@ -1185,6 +1296,7 @@ def editar_movimiento(movimiento_id):
             cantidad=cantidad_int,
             fecha_movimiento=fecha_movimiento,
             excluir_movimiento_id=movimiento.id,
+            sin_requisicion=sin_requisicion,
         )
         if not es_valido:
             _apply_movimiento_to_stock(articulo_viejo, movimiento.tipo, movimiento.cantidad)
@@ -1202,6 +1314,7 @@ def editar_movimiento(movimiento_id):
         movimiento.comentario = comentario
         movimiento.persona_recibe = persona_recibe
         movimiento.fecha = fecha_movimiento
+        movimiento.sin_requisicion = sin_requisicion if tipo == "SALIDA" else False
         movimiento.fecha_editado = datetime.utcnow()
 
         db.session.commit()
@@ -1252,7 +1365,8 @@ def api_cupo_disponible():
         return jsonify(
             {
                 "ok": False,
-                "mensaje": f"Sin cupo configurado para {maestro.area} en ciclo {_etiqueta_ciclo(anio_ciclo)}.",
+                "mensaje": f"Sin cupo configurado para {maestro.area} en ciclo {_etiqueta_ciclo(anio_ciclo)}. "
+                "Marca «Pedido sin requisición» al registrar la salida.",
             }
         )
 
@@ -1379,6 +1493,19 @@ def control_departamentos():
         .all()
     )
 
+    sin_requisicion_lista = (
+        Movimiento.query.join(Maestro, Maestro.id == Movimiento.maestro_id)
+        .join(Articulo, Articulo.id == Movimiento.articulo_id)
+        .filter(
+            Movimiento.tipo == "SALIDA",
+            Movimiento.sin_requisicion.is_(True),
+            Movimiento.fecha >= inicio_ciclo,
+            Movimiento.fecha < fin_ciclo,
+        )
+        .order_by(Movimiento.fecha.desc())
+        .all()
+    )
+
     return render_template(
         "control_departamentos.html",
         anio=anio,
@@ -1388,6 +1515,7 @@ def control_departamentos():
         cupos_resumen=cupos_resumen,
         resumen_departamentos=resumen_departamentos,
         resumen_docentes=resumen_docentes,
+        sin_requisicion_lista=sin_requisicion_lista,
     )
 
 
@@ -1665,3 +1793,8 @@ with app.app_context():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
+
+    "herramientas de lim"
+
+

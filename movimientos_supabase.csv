@@ -1,0 +1,54 @@
+fecha,tipo,nombre_articulo,codigo,area,quien_recoge,inventario_existente
+2026-05-27 16:12:00,SALIDA,Hojas Blancas T/Carta (500pz),P102,VINCULACION,omar navarrete,1
+2026-05-27 16:11:00,SALIDA,Opalina Blanca T/Carta (125g),P153,VINCULACION,omar navarrete,2
+2026-05-27 15:42:00,ENTRADA,Opalina Blanca T/Carta (125g),P153,,,1500
+2026-05-18 15:11:00,SALIDA,Lapicero Negro,P115,PROMOCION Y DIVULGACION CULTURAL,jessia tavira,48
+2026-05-12 16:28:00,SALIDA,Hojas Blancas T/Carta (500pz),P102,INVESTIGACION E INNOVACION,alejandro garcia oaxaca,500
+2026-04-30 20:08:00,SALIDA,Barras de silicon,P014,FORMACION INICIAL,jaqueline salazar,5
+2026-04-30 18:38:00,SALIDA,tabla para regalo,,HORAS CLASE,yaslin yatsidi,10
+2026-04-30 18:07:00,ENTRADA,tabla para regalo,,,,10
+2026-04-30 18:03:00,SALIDA,Papel terciopelo,P169,HORAS CLASE,yaslin yatsidi,15
+2026-04-30 17:58:00,SALIDA,Papel PVC,P162,HORAS CLASE,yaslin yatsidi,1
+2026-04-30 17:45:00,SALIDA,Lapicero Azul,P114,SUBDIRECCION ADMINISTRATIVA,Belbl Angel Angeles Reyes,3
+2026-04-23 16:33:02,ENTRADA,Acetatos T/Oficio,P002,,,1
+2026-04-23 16:27:00,ENTRADA,Separadores de Hojas (12 Divisiones),P195,,,5
+2026-04-23 16:26:00,ENTRADA,Separadores de hojas (10 divisiones),P194,,,5
+2026-04-23 16:25:00,ENTRADA,Separadores de Hojas (8 Divisiones),P198,,,5
+2026-04-23 16:24:00,ENTRADA,Sujeta papel de 25,P233,,,60
+2026-04-23 16:24:00,ENTRADA,Separadores de Hojas (5 Divisiones),P197,,,5
+2026-04-23 16:22:00,ENTRADA,Protectores de Hojas T/Carta,P182,,,1000
+2026-04-23 16:22:00,ENTRADA,Sujeta papel de 32,P234,,,60
+2026-04-23 16:21:00,ENTRADA,Pistola para silicon,P176,,,3
+2026-04-23 16:20:00,ENTRADA,Memotip chico,P152,,,5
+2026-04-23 16:19:00,ENTRADA,Memotip grande,P151,,,5
+2026-04-23 16:17:00,ENTRADA,Marcador Negro Permanente,P132,,,24
+2026-04-23 15:59:00,ENTRADA,Marcado permanente color negro,P124,,,12
+2026-04-23 15:57:00,ENTRADA,Marcador Negro Permanente,P132,,,28
+2026-04-23 15:56:00,ENTRADA,Lápiz Adhesivo Grande,P117,,,24
+2026-04-23 15:55:00,ENTRADA,Lapicero Negro,P115,,,15
+2026-04-23 15:54:00,ENTRADA,Lapicero Azul,P114,,,15
+2026-04-23 15:53:00,ENTRADA,Lapicero Azul,P114,,,10
+2026-04-23 15:52:00,ENTRADA,Cinta Adhesiva (24mm),P040,,,5
+2026-04-23 15:52:00,ENTRADA,Cinta Adhesiva (18mm),P039,,,5
+2026-04-23 15:51:00,ENTRADA,Maskin Tape (24mm x 50m),P141,,,10
+2026-04-23 15:50:59,ENTRADA,Dedal Hule,P056,RECURSOS MATERIALES,,1
+2026-04-23 15:50:00,ENTRADA,Tinta para Sellos,P240,,,5
+2026-04-23 15:46:00,ENTRADA,Cojin para Sellos,P049,,,5
+2026-04-23 15:46:00,ENTRADA,Cojin para Sellos,P049,,,5
+2026-04-23 15:41:00,ENTRADA,Hoja de color Neon,P246,,,300
+2026-04-23 15:37:00,ENTRADA,Hojas de colores T/Carta,P104,,,300
+2026-04-23 15:34:00,ENTRADA,"Carpeta 3 aros blanca 2""",P031,,,6
+2026-04-23 15:33:00,ENTRADA,"Carpeta 3 aros blanca 4""",P033,,,15
+2026-04-23 15:33:00,ENTRADA,"Carpeta 3 aros blanca 3""",P032,,,12
+2026-04-23 15:32:00,ENTRADA,"Carpeta 3 aros blanca 5""",P034,,,4
+2026-04-23 15:21:00,ENTRADA,Papel Multifuncional T/Doble Carta,P161,,,60000
+2026-03-24 15:44:00,ENTRADA,Opalina Blanca T/Carta (225g),P154,,,1000
+2026-03-10 15:15:02,SALIDA,Acrilicos personifacadores 5.5X25,P004,,,1
+2026-03-09 17:55:40,SALIDA,Folder Colgante,P075,,,20
+2026-03-09 17:54:42,ENTRADA,Folder Colgante,P075,,,20
+2026-03-09 17:53:05,SALIDA,Papel Seguridad T/Carta (Verde Oscuro),P166,,,10
+2026-03-09 17:32:03,SALIDA,"Espiral (10mm, 3/8"")",P061,,,20
+2026-03-09 17:30:55,SALIDA,Barras de silicon,P014,,,1
+2026-01-26 17:55:00,ENTRADA,Papel Seguridad T/Carta (Amarillo),P164,,,100
+2026-01-26 17:53:00,ENTRADA,Papel Seguridad T/Carta (Verde Militar),P167,,,100
+2025-11-26 15:13:00,ENTRADA,Lapicero Negro,P115,,,500
